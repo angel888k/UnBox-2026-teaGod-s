@@ -70,7 +70,7 @@ func TestNormalizeModuleSourcePreservesIdentifiers(t *testing.T) {
 
 func TestLoadReportsESModuleUnsupported(t *testing.T) {
 	e := New()
-	err := e.Load("import {\n  cheerio\n} from \"https://pan.29o.cn/x.js\";\nlet a = 1;\n")
+	err := e.Load("import {\n  cheerio\n} from \"https://cdn.example.com/x.js\";\nlet a = 1;\n")
 	if err == nil {
 		t.Fatal("ES Module 脚本应当报错")
 	}
@@ -92,7 +92,7 @@ func TestLoadStillRunsJS0Script(t *testing.T) {
 
 func TestLoadFromURLRejectsRelativePath(t *testing.T) {
 	e := New()
-	err := e.LoadFromURL(context.Background(), "./FTY/drpy2.min.js")
+	err := e.LoadFromURL(context.Background(), "./lib/drpy2.min.js")
 	if err == nil || !strings.Contains(err.Error(), "相对路径") {
 		t.Fatalf("相对路径应给出明确提示，实际: %v", err)
 	}

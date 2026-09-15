@@ -823,15 +823,15 @@ func TestPreloadVodUnknownSiteDoesNotTouchPlayback(t *testing.T) {
 }
 
 func TestResolveConfigsResolvesRelativeSiteURLs(t *testing.T) {
-	raw := []byte(`{"sites":[{"key":"js","name":"JS 站","type":3,"api":"./FTY/drpy2.min.js"}]}`)
-	cfgs, err := resolveConfigs(context.Background(), "https://qist.wyfc.qzz.io/xiaosa/api.json", raw)
+	raw := []byte(`{"sites":[{"key":"js","name":"JS 站","type":3,"api":"./lib/drpy2.min.js"}]}`)
+	cfgs, err := resolveConfigs(context.Background(), "https://cfg.example.com/feed/api.json", raw)
 	if err != nil {
 		t.Fatalf("resolveConfigs: %v", err)
 	}
 	if len(cfgs) != 1 {
 		t.Fatalf("配置数 = %d", len(cfgs))
 	}
-	want := "https://qist.wyfc.qzz.io/xiaosa/FTY/drpy2.min.js"
+	want := "https://cfg.example.com/feed/lib/drpy2.min.js"
 	if got := cfgs[0].Sites[0].API; got != want {
 		t.Fatalf("站点 API = %q，期望解析成 %q", got, want)
 	}
@@ -839,7 +839,7 @@ func TestResolveConfigsResolvesRelativeSiteURLs(t *testing.T) {
 
 func TestCheckSubscriptionContentRejectsWebPage(t *testing.T) {
 	html := []byte("\xef\xbb\xbf<!DOCTYPE html>\n<html><head><title>导航</title></head><body>hi</body></html>\n")
-	err := checkSubscriptionContent(html, "https://www.饭太硬.net/")
+	err := checkSubscriptionContent(html, "https://www.example.com/")
 	if err == nil {
 		t.Fatal("网页内容应当被拒绝并给出提示")
 	}

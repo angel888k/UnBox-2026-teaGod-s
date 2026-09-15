@@ -4,13 +4,13 @@ import "testing"
 
 func TestResolveRelativeURLs(t *testing.T) {
 	cfg := &Config{
-		SourceURL: "https://qist.wyfc.qzz.io/xiaosa/api.json",
+		SourceURL: "https://cfg.example.com/feed/api.json",
 		Sites: []Site{
-			{Key: "dot-slash", API: "./FTY/drpy2.min.js"},
+			{Key: "dot-slash", API: "./lib/drpy2.min.js"},
 			{Key: "root-path", API: "/spider.js"},
 			{Key: "bare", API: "spider.js"},
 			{Key: "parent", API: "../common/a.js"},
-			{Key: "absolute", API: "https://pan.29o.cn/down.php/x.js"},
+			{Key: "absolute", API: "https://cdn.example.com/down.php/x.js"},
 			{Key: "protocol-relative", API: "//cdn.example.com/x.js"},
 			{Key: "jar-class", API: "csp_WexAppV7Guard"},
 			{Key: "asset", API: "assets://js/lib/cheerio.min.js"},
@@ -22,11 +22,11 @@ func TestResolveRelativeURLs(t *testing.T) {
 	ResolveRelativeURLs(cfg)
 
 	want := map[string]string{
-		"dot-slash":         "https://qist.wyfc.qzz.io/xiaosa/FTY/drpy2.min.js",
-		"root-path":         "https://qist.wyfc.qzz.io/spider.js",
-		"bare":              "https://qist.wyfc.qzz.io/xiaosa/spider.js",
-		"parent":            "https://qist.wyfc.qzz.io/common/a.js",
-		"absolute":          "https://pan.29o.cn/down.php/x.js",
+		"dot-slash":         "https://cfg.example.com/feed/lib/drpy2.min.js",
+		"root-path":         "https://cfg.example.com/spider.js",
+		"bare":              "https://cfg.example.com/feed/spider.js",
+		"parent":            "https://cfg.example.com/common/a.js",
+		"absolute":          "https://cdn.example.com/down.php/x.js",
 		"protocol-relative": "//cdn.example.com/x.js",
 		"jar-class":         "csp_WexAppV7Guard",
 		"asset":             "assets://js/lib/cheerio.min.js",
@@ -37,7 +37,7 @@ func TestResolveRelativeURLs(t *testing.T) {
 			t.Errorf("站点 %s: API = %q，期望 %q", site.Key, got, want[site.Key])
 		}
 	}
-	if got := cfg.Lives[0].URL; got != "https://qist.wyfc.qzz.io/xiaosa/live/iptv.m3u" {
+	if got := cfg.Lives[0].URL; got != "https://cfg.example.com/feed/live/iptv.m3u" {
 		t.Errorf("直播 URL = %q", got)
 	}
 }

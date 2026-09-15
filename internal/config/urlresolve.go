@@ -7,9 +7,9 @@ import (
 
 // ResolveRelativeURLs 把站点与直播源里写成相对路径的地址解析成绝对地址。
 //
-// 真实配置里常见 `./FTY/drpy2.min.js`、`/spider.js` 这类写法，它们是相对于配置
+// 真实配置里常见 `./lib/drpy2.min.js`、`/spider.js` 这类写法，它们是相对于配置
 // 自身地址的。不解析就会把相对路径当 URL 去请求，报
-// `Get "./FTY/drpy2.min.js": unsupported protocol scheme ""`。
+// `Get "./lib/drpy2.min.js": unsupported protocol scheme ""`。
 //
 // 只处理相对地址：已带协议（http/https/assets 等）、协议相对（//host/x）、
 // 以及 `csp_` 这种蜘蛛类名保持原样。cfg.SourceURL 为空时不做任何改动。
