@@ -11,8 +11,8 @@ func TestSplitSources(t *testing.T) {
 		in   string
 		want []string
 	}{
-		{"feifan$$$ffm3u8", []string{"feifan", "ffm3u8"}},
-		{"feifan,ffm3u8", []string{"feifan", "ffm3u8"}},
+		{"线路A$$$线路B", []string{"线路A", "线路B"}},
+		{"线路A,线路B", []string{"线路A", "线路B"}},
 		{"single", []string{"single"}},
 		{"", nil},
 		{"a$$$b$$$c", []string{"a", "b", "c"}},
@@ -51,21 +51,21 @@ func loadDetailFixture(t *testing.T) (from, playURL string) {
 
 func TestParseEpisodesRealFixture(t *testing.T) {
 	from, playURL := loadDetailFixture(t)
-	sources := splitSources(from) // 期望 ["feifan","ffm3u8"]
+	sources := splitSources(from) // 期望 ["线路A","线路B"]
 	if len(sources) != 2 {
 		t.Fatalf("fixture 线路数 = %d, 期望 2", len(sources))
 	}
-	eps := parseEpisodes("98823", playURL, sources)
+	eps := parseEpisodes("1001", playURL, sources)
 	if len(eps) != 14 {
 		t.Fatalf("剧集数 = %d, 期望 14（2 线路 × 7 集）", len(eps))
 	}
-	if eps[0].ID != "98823/0/0" || eps[0].Source != "feifan" || eps[0].Name != "第01集" || eps[0].URL == "" {
+	if eps[0].ID != "1001/0/0" || eps[0].Source != "线路A" || eps[0].Name != "第01集" || eps[0].URL == "" {
 		t.Fatalf("首集解析错误: %+v", eps[0])
 	}
-	if eps[7].ID != "98823/1/0" || eps[7].Source != "ffm3u8" {
+	if eps[7].ID != "1001/1/0" || eps[7].Source != "线路B" {
 		t.Fatalf("第二线路首集解析错误: %+v", eps[7])
 	}
-	if eps[13].ID != "98823/1/6" || eps[13].Source != "ffm3u8" {
+	if eps[13].ID != "1001/1/6" || eps[13].Source != "线路B" {
 		t.Fatalf("末集解析错误: %+v", eps[13])
 	}
 }

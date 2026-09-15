@@ -14,7 +14,7 @@ func TestClientVideolist(t *testing.T) {
 		if r.URL.Query().Get("ac") != "videolist" {
 			t.Errorf("ac = %q, 期望 videolist", r.URL.Query().Get("ac"))
 		}
-		w.Write([]byte(`{"code":1,"list":[{"vod_id":98823,"vod_name":"狂怒追缉","vod_pic":"http://x/p.jpg","type_id":16,"type_name":"欧美剧"}]}`))
+		w.Write([]byte(`{"code":1,"list":[{"vod_id":1001,"vod_name":"示例影片A","vod_pic":"http://x/p.jpg","type_id":16,"type_name":"示例分类"}]}`))
 	}))
 	defer srv.Close()
 
@@ -23,7 +23,7 @@ func TestClientVideolist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("videolist 失败: %v", err)
 	}
-	if len(items) != 1 || items[0].VodName != "狂怒追缉" || items[0].TypeName != "欧美剧" {
+	if len(items) != 1 || items[0].VodName != "示例影片A" || items[0].TypeName != "示例分类" {
 		t.Fatalf("解析错误: %+v", items)
 	}
 	if gotPath != "/" {
@@ -41,18 +41,18 @@ func TestClientBaseStripsQuery(t *testing.T) {
 
 func TestClientDetail(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("ac") != "detail" || r.URL.Query().Get("ids") != "98823" {
+		if r.URL.Query().Get("ac") != "detail" || r.URL.Query().Get("ids") != "1001" {
 			t.Errorf("query = %s", r.URL.RawQuery)
 		}
-		w.Write([]byte(`{"code":1,"list":[{"vod_id":98823,"vod_name":"狂怒追缉","vod_play_from":"feifan$$$ffm3u8","vod_play_url":"第01集$a#第02集$b"}]}`))
+		w.Write([]byte(`{"code":1,"list":[{"vod_id":1001,"vod_name":"示例影片A","vod_play_from":"线路A$$$线路B","vod_play_url":"第01集$a#第02集$b"}]}`))
 	}))
 	defer srv.Close()
 
-	v, err := newClient(srv.URL).detail(context.Background(), "98823")
+	v, err := newClient(srv.URL).detail(context.Background(), "1001")
 	if err != nil {
 		t.Fatalf("detail 失败: %v", err)
 	}
-	if v.VodPlayFrom != "feifan$$$ffm3u8" {
+	if v.VodPlayFrom != "线路A$$$线路B" {
 		t.Fatalf("detail 解析错误: %+v", v)
 	}
 }
