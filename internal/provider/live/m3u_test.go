@@ -49,3 +49,26 @@ func TestParseTXT(t *testing.T) {
 		t.Fatalf("ParseTXT = %#v", got)
 	}
 }
+
+// 把 HTML 网页当 TXT 播放列表时（例如误把导航页填成源地址），含逗号的
+// HTML 行不得变成频道。
+func TestParseTXTIgnoresHTMLLines(t *testing.T) {
+	raw := []byte(`<!DOCTYPE html>
+<html>
+<head><meta name="viewport" content="width=device-width, initial-scale=1,user-scalable=no" /></head>
+<script>gtag('js', new Date());</script>
+<body><p>高速免备案,香港日本特价机器</p></body>
+频道一,http://x/1
+频道二,rtmp://x/2
+频道三,udp://@239.1.1.1:1234
+`)
+	got := ParseTXT(raw)
+	if len(got) != 3 {
+		t.Fatalf("ParseTXT = %#v，期望只剩 3 个真实频道", got)
+	}
+	for i, want := range []string{"频道一", "频道二", "频道三"} {
+		if got[i].Name != want {
+			t.Fatalf("第 %d 条 = %q，期望 %q", i, got[i].Name, want)
+		}
+	}
+}

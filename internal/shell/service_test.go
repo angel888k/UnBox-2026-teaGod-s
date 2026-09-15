@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -818,5 +819,43 @@ func TestPreloadVodUnknownSiteDoesNotTouchPlayback(t *testing.T) {
 	}
 	if svc.playbackToken != 7 || svc.playbackSeq != 3 {
 		t.Fatalf("预载失败不应改动播放会话: token=%d seq=%d", svc.playbackToken, svc.playbackSeq)
+	}
+}
+
+func TestResolveConfigsResolvesRelativeSiteURLs(t *testing.T) {
+	raw := []byte(`{"sites":[{"key":"js","name":"JS 站","type":3,"api":"./FTY/drpy2.min.js"}]}`)
+	cfgs, err := resolveConfigs(context.Background(), "https://qist.wyfc.qzz.io/xiaosa/api.json", raw)
+	if err != nil {
+		t.Fatalf("resolveConfigs: %v", err)
+	}
+	if len(cfgs) != 1 {
+		t.Fatalf("配置数 = %d", len(cfgs))
+	}
+	want := "https://qist.wyfc.qzz.io/xiaosa/FTY/drpy2.min.js"
+	if got := cfgs[0].Sites[0].API; got != want {
+		t.Fatalf("站点 API = %q，期望解析成 %q", got, want)
+	}
+}
+
+func TestCheckSubscriptionContentRejectsWebPage(t *testing.T) {
+	html := []byte("\xef\xbb\xbf<!DOCTYPE html>\n<html><head><title>导航</title></head><body>hi</body></html>\n")
+	err := checkSubscriptionContent(html, "https://www.饭太硬.net/")
+	if err == nil {
+		t.Fatal("网页内容应当被拒绝并给出提示")
+	}
+	if !strings.Contains(err.Error(), "网页") || !strings.Contains(err.Error(), "JSON 接口") {
+		t.Fatalf("错误提示不够明确: %v", err)
+	}
+
+	okCases := [][]byte{
+		[]byte(`{"sites":[{"key":"a","api":"http://x/api.php"}]}`),
+		[]byte("#EXTM3U\n#EXTINF:-1,频道\nhttp://x/1\n"),
+		[]byte("频道一,http://x/1\n"),
+		[]byte("   \n\t"),
+	}
+	for _, raw := range okCases {
+		if err := checkSubscriptionContent(raw, "https://example.com/x.json"); err != nil {
+			t.Fatalf("正常内容被误拒: %v (raw=%q)", err, raw)
+		}
 	}
 }

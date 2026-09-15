@@ -1,6 +1,8 @@
 package crawler
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -63,5 +65,43 @@ func TestNormalizeModuleSourcePreservesIdentifiers(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("标识符 %q 被误伤:\n%s", want, got)
 		}
+	}
+}
+
+func TestLoadReportsESModuleUnsupported(t *testing.T) {
+	e := New()
+	err := e.Load("import {\n  cheerio\n} from \"https://pan.29o.cn/x.js\";\nlet a = 1;\n")
+	if err == nil {
+		t.Fatal("ES Module 脚本应当报错")
+	}
+	if !errors.Is(err, ErrESModuleUnsupported) {
+		t.Fatalf("错误未包装成 ErrESModuleUnsupported: %v", err)
+	}
+	if !strings.Contains(err.Error(), "drpy2") {
+		t.Fatalf("提示应点明 drpy2: %v", err)
+	}
+}
+
+func TestLoadStillRunsJS0Script(t *testing.T) {
+	e := New()
+	src := "var rule = {};\nasync function home() { return 'ok' }\nexport default { home: home }\n"
+	if err := e.Load(src); err != nil {
+		t.Fatalf("FongMi js0 形态脚本应能加载: %v", err)
+	}
+}
+
+func TestLoadFromURLRejectsRelativePath(t *testing.T) {
+	e := New()
+	err := e.LoadFromURL(context.Background(), "./FTY/drpy2.min.js")
+	if err == nil || !strings.Contains(err.Error(), "相对路径") {
+		t.Fatalf("相对路径应给出明确提示，实际: %v", err)
+	}
+}
+
+func TestLoadFromURLRejectsAssetsScheme(t *testing.T) {
+	e := New()
+	err := e.LoadFromURL(context.Background(), "assets://js/lib/cheerio.min.js")
+	if err == nil || !strings.Contains(err.Error(), "协议不支持") {
+		t.Fatalf("assets:// 应给出协议提示，实际: %v", err)
 	}
 }

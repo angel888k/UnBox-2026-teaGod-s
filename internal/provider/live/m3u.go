@@ -99,7 +99,29 @@ func ParseTXT(raw []byte) []Entry {
 		if !ok || name == "" || url == "" {
 			continue
 		}
+		// 只接受带协议头的地址。HTML 网页里含逗号的行（meta/script/文本）会被
+		// 切成「名字,伪地址」，不校验就会把网页当成一堆垃圾频道导进来。
+		if !hasURLScheme(url) {
+			continue
+		}
 		out = append(out, Entry{Name: name, URL: url})
 	}
 	return out
+}
+
+// hasURLScheme 判断地址是否带协议头（http://、rtmp://、udp:// 等）。
+func hasURLScheme(raw string) bool {
+	idx := strings.Index(raw, "://")
+	if idx <= 0 {
+		return false
+	}
+	for i, r := range raw[:idx] {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+		case (r >= '0' && r <= '9' || r == '+' || r == '-' || r == '.') && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
 }

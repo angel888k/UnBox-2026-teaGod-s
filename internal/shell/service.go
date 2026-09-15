@@ -385,6 +385,10 @@ func (s *ShellService) ImportSubscription(ref string) (ImportResult, error) {
 		s.emitProgress(Progress{Stage: "error", Message: "导入失败", Done: -1, Total: -1})
 		return ImportResult{}, fmt.Errorf("拉取 %s 失败: %w", ref, err)
 	}
+	if err := checkSubscriptionContent(raw, ref); err != nil {
+		s.emitProgress(Progress{Stage: "error", Message: "导入失败", Done: -1, Total: -1})
+		return ImportResult{}, err
+	}
 	if isPlaylist(raw) {
 		return s.importPlaylist(ref, raw, true)
 	}
@@ -428,6 +432,9 @@ func (s *ShellService) ImportVodSource(ref string) (ImportResult, error) {
 		log.Printf("导入点播源拉取失败 %s: %v", ref, err)
 		return ImportResult{}, fmt.Errorf("拉取 %s 失败: %w", ref, err)
 	}
+	if err := checkSubscriptionContent(raw, ref); err != nil {
+		return ImportResult{}, err
+	}
 	if isPlaylist(raw) {
 		return ImportResult{}, errors.New("该源是直播播放列表，不含点播站点")
 	}
@@ -457,6 +464,9 @@ func (s *ShellService) ImportLiveSource(ref string) (ImportResult, error) {
 	if err != nil {
 		log.Printf("导入直播源拉取失败 %s: %v", ref, err)
 		return ImportResult{}, fmt.Errorf("拉取 %s 失败: %w", ref, err)
+	}
+	if err := checkSubscriptionContent(raw, ref); err != nil {
+		return ImportResult{}, err
 	}
 	if isPlaylist(raw) {
 		return s.importPlaylist(ref, raw, false)
@@ -822,6 +832,34 @@ func isPlaylist(raw []byte) bool {
 	return t[0] != '{' && t[0] != '['
 }
 
+// looksLikeHTML 判断拉取到的内容是不是网页。
+// 网页既不是 JSON 配置，也不是播放列表；不拦下来的话会被 isPlaylist 当成 TXT，
+// 于是把 HTML 里含逗号的行解析成一堆垃圾频道。
+func looksLikeHTML(raw []byte) bool {
+	head := bytes.ToLower(bytes.TrimSpace(bytes.TrimPrefix(raw, []byte("\xef\xbb\xbf"))))
+	if len(head) > htmlSniffBytes {
+		head = head[:htmlSniffBytes]
+	}
+	if len(head) == 0 {
+		return false
+	}
+	return bytes.HasPrefix(head, []byte("<!doctype html")) ||
+		bytes.HasPrefix(head, []byte("<html")) ||
+		bytes.Contains(head, []byte("<head")) ||
+		bytes.Contains(head, []byte("<body"))
+}
+
+// htmlSniffBytes 是判定网页时检查的字节数。
+const htmlSniffBytes = 1024
+
+// checkSubscriptionContent 在导入前拦下「填了网页地址」这类误操作，给出明确提示。
+func checkSubscriptionContent(raw []byte, ref string) error {
+	if !looksLikeHTML(raw) {
+		return nil
+	}
+	return fmt.Errorf("该地址返回的是网页而不是订阅配置：%s（请填写 JSON 接口或 M3U/TXT 播放列表地址）", ref)
+}
+
 // importPlaylist 解析独立 M3U/TXT 播放列表并重建直播 Provider。
 // clearVod 为 true 时同时清空点播站点（合并导入语义）；false 时保留（仅导直播源）。
 func (s *ShellService) importPlaylist(ref string, raw []byte, clearVod bool) (ImportResult, error) {
@@ -860,14 +898,24 @@ func resolveConfigs(ctx context.Context, ref string, raw []byte) ([]*config.Conf
 	if err != nil {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
+	cfg.SourceURL = ref
 	if len(cfg.StoreHouse) > 0 || len(cfg.URLs) > 0 {
 		cfgs, rerr := config.NewResolver().Resolve(ctx, ref)
 		if rerr != nil && len(cfgs) == 0 {
 			return nil, fmt.Errorf("展开订阅失败: %w", rerr)
 		}
+		resolveRelativeURLs(cfgs)
 		return cfgs, nil
 	}
+	config.ResolveRelativeURLs(cfg)
 	return []*config.Config{cfg}, nil
+}
+
+// resolveRelativeURLs 把每份配置里站点/直播的相对地址按各自的来源地址解析成绝对地址。
+func resolveRelativeURLs(cfgs []*config.Config) {
+	for _, cfg := range cfgs {
+		config.ResolveRelativeURLs(cfg)
+	}
 }
 
 // liveFetchTimeout 是直播源 m3u 的拉取超时。直播源数量多、死源占比高，

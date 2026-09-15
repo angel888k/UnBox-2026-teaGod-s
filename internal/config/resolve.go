@@ -235,6 +235,8 @@ func (r *Resolver) walk(ctx context.Context, ref string, depth int, sourceName s
 
 	if isTerminal {
 		cfg.SourceName = sourceName
+		// 记下来源地址，供站点里的相对路径解析（见 ResolveRelativeURLs）。
+		cfg.SourceURL = ref
 		st.collect(ref, cfg)
 	}
 

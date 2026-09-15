@@ -4,15 +4,23 @@ package crawler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/dop251/goja"
 )
+
+// ErrESModuleUnsupported 表示脚本用了 ES Module 语法（import/export）。
+// 引擎只支持 FongMi js0 形态（async 函数 + 末尾 export default），
+// 真实源里常见的 drpy2/drpy2.1 脚本属于前者，暂不支持。
+var ErrESModuleUnsupported = errors.New(
+	"该站点使用 drpy2 / ES Module 脚本，当前版本不支持（仅支持 FongMi js0 形态的 .js 爬虫）")
 
 // Engine 封装一个 goja VM，加载并运行单个爬虫脚本。
 type Engine struct {
@@ -46,6 +54,10 @@ func (e *Engine) Load(src string) error {
 	}
 	_, err := e.vm.RunString(normalizeModuleSource(src))
 	if err != nil {
+		// 先用 goja 跑一遍再判断，避免把仅仅「字符串里含 import」的正常脚本误判。
+		if esModuleRe.MatchString(src) {
+			return fmt.Errorf("%w（原始错误: %v）", ErrESModuleUnsupported, err)
+		}
 		return err
 	}
 	// FongMi JS0 scripts expose actions through export default. Copy exported
@@ -67,6 +79,8 @@ func (e *Engine) Load(src string) error {
 var (
 	asyncFnRe = regexp.MustCompile(`\basync\s+(function\b)`)
 	awaitRe   = regexp.MustCompile(`\bawait\s+`)
+	// esModuleRe 匹配顶层的 ES Module import/export 语句。
+	esModuleRe = regexp.MustCompile(`(?m)^\s*(import|export)\s`)
 )
 
 func normalizeModuleSource(src string) string {
@@ -88,6 +102,13 @@ func normalizeModuleSource(src string) string {
 func (e *Engine) LoadFromURL(ctx context.Context, u string) error {
 	if e == nil || e.hc == nil {
 		return fmt.Errorf("爬虫引擎未初始化")
+	}
+	parsed, err := url.Parse(strings.TrimSpace(u))
+	if err != nil || parsed.Host == "" {
+		return fmt.Errorf("爬虫地址不是完整 URL（%s）：配置里的相对路径未解析成功", u)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("爬虫地址协议不支持（%s）：仅支持 http/https 的爬虫脚本", u)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
