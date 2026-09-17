@@ -376,4 +376,60 @@ describe('PlaybackView', () => {
     Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => null })
   })
 
+  it('自绘播放控件默认隐藏，鼠标靠近才显示，播放中静置后自动隐藏', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = await mountView()
+      const root = wrapper.find('.playback-view')
+      expect(root.classes()).not.toContain('controls-visible')
+
+      await root.trigger('mousemove')
+      expect(root.classes()).toContain('controls-visible')
+
+      // 暂停状态下不自动隐藏，避免用户找不到控件
+      vi.advanceTimersByTime(5000)
+      await nextTick()
+      expect(root.classes()).toContain('controls-visible')
+
+      await wrapper.find('video').trigger('playing')
+      vi.advanceTimersByTime(3000)
+      await nextTick()
+      expect(root.classes()).not.toContain('controls-visible')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('自绘控件提供播放/暂停与进度定位', async () => {
+    const wrapper = await mountView()
+    const video = wrapper.find('video').element as HTMLVideoElement
+    const pause = vi.fn()
+    video.pause = pause as unknown as HTMLVideoElement['pause']
+    Object.defineProperty(video, 'paused', { configurable: true, get: () => false })
+
+    await wrapper.findAll('.ctrl-btn')[0].trigger('click')
+    expect(pause).toHaveBeenCalled()
+
+    Object.defineProperty(video, 'duration', { configurable: true, get: () => 120 })
+    await wrapper.find('video').trigger('timeupdate')
+    await wrapper.find('.ctrl-seek').setValue('42')
+    expect(video.currentTime).toBe(42)
+  })
+
+  it('全屏按钮请求整个播放容器全屏', async () => {
+    const wrapper = await mountView()
+    const box = wrapper.find('video').element.parentElement as HTMLElement
+    const request = vi.fn(() => Promise.resolve())
+    box.requestFullscreen = request as unknown as HTMLElement['requestFullscreen']
+
+    const buttons = wrapper.findAll('.ctrl-btn')
+    await buttons[buttons.length - 1].trigger('click')
+    expect(request).toHaveBeenCalled()
+  })
+
+  it('mpv 后端不渲染自绘播放控件', async () => {
+    const wrapper = await mountView({ Backend: 'mpv' })
+    expect(wrapper.find('.player-controls').exists()).toBe(false)
+  })
+
 })

@@ -33,6 +33,16 @@ const trackState = ref<TrackState | null>(null)
 const menuOpen = ref(false)
 // 画面旋转角度（度），90/270 时按容器比例缩放，避免旋转后画面被裁掉。
 const rotation = ref(0)
+// 自绘播放控件状态：原生 controls 会跟着画面一起旋转，且全屏时无法与工具按钮共存。
+const playing = ref(false)
+const currentTime = ref(0)
+const duration = ref(0)
+const muted = ref(false)
+const volume = ref(1)
+const isFullscreen = ref(false)
+const controlsVisible = ref(false)
+const HIDE_CONTROLS_DELAY = 3000
+let hideTimer: ReturnType<typeof setTimeout> | null = null
 let hls: Hls | null = null
 let flv: ReturnType<typeof mpegts.createPlayer> | null = null
 let fallbackSent = false
@@ -54,6 +64,10 @@ function cleanup() {
   trackState.value?.detach(); trackState.value = null
   menuOpen.value = false
   autoplayPending = false
+  playing.value = false
+  currentTime.value = 0
+  duration.value = 0
+  clearHideTimer()
   hls?.destroy(); hls = null
   flv?.destroy(); flv = null
   if (video.value) { video.value.pause(); video.value.removeAttribute('src'); video.value.load() }
@@ -117,7 +131,144 @@ function onFullscreenChange() {
       if (result && typeof result.catch === 'function') result.catch(() => {})
     }
   }
+  isFullscreen.value = !!box && fullscreenElement() === box
   applyRotation()
+}
+
+// fullscreenElement/requestFullscreen/exitFullscreen 兼容 WebKitGTK 的 webkit 前缀。
+function fullscreenElement(): Element | null {
+  const doc = document as Document & { webkitFullscreenElement?: Element | null }
+  return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null
+}
+
+function requestFullscreen(el: HTMLElement): void {
+  const target = el as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void }
+  const request = el.requestFullscreen?.bind(el) ?? target.webkitRequestFullscreen?.bind(el)
+  if (!request) return
+  const result = request() as Promise<void> | void
+  if (result && typeof (result as Promise<void>).catch === 'function') (result as Promise<void>).catch(() => {})
+}
+
+function exitFullscreen(): void {
+  const doc = document as Document & { webkitExitFullscreen?: () => void }
+  const exit = document.exitFullscreen?.bind(document) ?? doc.webkitExitFullscreen?.bind(doc)
+  exit?.()
+}
+
+function clearHideTimer(): void {
+  if (hideTimer !== null) {
+    clearTimeout(hideTimer)
+    hideTimer = null
+  }
+}
+
+// showControls 在鼠标靠近时显示控件；播放中静置一段时间后自动隐藏。
+function showControls(): void {
+  controlsVisible.value = true
+  scheduleHideControls()
+}
+
+function scheduleHideControls(): void {
+  clearHideTimer()
+  // 暂停中或轨道菜单打开时保持可见，避免用户找不到控件。
+  if (!playing.value || menuOpen.value) return
+  hideTimer = setTimeout(() => { controlsVisible.value = false }, HIDE_CONTROLS_DELAY)
+}
+
+function onPlay(): void {
+  playing.value = true
+  emit('playback', 'playing')
+  scheduleHideControls()
+}
+
+function onPause(): void {
+  playing.value = false
+  controlsVisible.value = true
+  clearHideTimer()
+}
+
+function onVolumeChange(): void {
+  const element = video.value
+  if (!element) return
+  muted.value = element.muted
+  volume.value = element.muted ? 0 : element.volume
+}
+
+function togglePlay(): void {
+  const element = video.value
+  if (!element) return
+  if (element.paused) {
+    try {
+      const result = element.play()
+      if (result && typeof result.catch === 'function') result.catch(() => {})
+    } catch { /* 播放被拦截时保持暂停 */ }
+  } else {
+    element.pause()
+  }
+}
+
+function toggleMute(): void {
+  const element = video.value
+  if (element) element.muted = !element.muted
+}
+
+function onSeekInput(event: Event): void {
+  const element = video.value
+  if (!element) return
+  const next = Number((event.target as HTMLInputElement).value)
+  element.currentTime = next
+  currentTime.value = next
+}
+
+function onVolumeInput(event: Event): void {
+  const element = video.value
+  if (!element) return
+  const next = Number((event.target as HTMLInputElement).value)
+  element.volume = next
+  element.muted = next === 0
+}
+
+function toggleFullscreen(): void {
+  const box = video.value?.parentElement
+  if (!box) return
+  if (fullscreenElement()) exitFullscreen()
+  else requestFullscreen(box)
+}
+
+// onKeydown 补回原生控件提供的常用快捷键（自绘控件后浏览器不再代劳）。
+function onKeydown(event: KeyboardEvent): void {
+  const element = video.value
+  if (!element) return
+  switch (event.key) {
+    case ' ':
+    case 'k':
+      event.preventDefault()
+      togglePlay()
+      break
+    case 'ArrowLeft':
+      event.preventDefault()
+      element.currentTime = Math.max(0, element.currentTime - 5)
+      break
+    case 'ArrowRight':
+      event.preventDefault()
+      element.currentTime = Math.min(element.duration || 0, element.currentTime + 5)
+      break
+    case 'f':
+      event.preventDefault()
+      toggleFullscreen()
+      break
+  }
+}
+
+// formatTime 输出 mm:ss（超过一小时给 h:mm:ss）。
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '00:00'
+  const total = Math.floor(seconds)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const secs = total % 60
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(secs)}` : `${pad(minutes)}:${pad(secs)}`
 }
 
 function requestFallback() {
@@ -181,9 +332,11 @@ function onMpegtsError(errType: string, errDetail: string, info: unknown) {
 }
 
 function onTimeUpdate() {
-  if (video.value) {
-    emit('progress', video.value.currentTime, video.value.duration || 0)
-  }
+  const element = video.value
+  if (!element) return
+  currentTime.value = element.currentTime
+  duration.value = Number.isFinite(element.duration) ? element.duration : 0
+  emit('progress', element.currentTime, element.duration || 0)
 }
 
 function applySeek() {
@@ -241,6 +394,15 @@ async function attach(plan: PlaybackPlan | null) {
 
 watch(() => props.plan, attach, { immediate: true })
 watch(() => props.seekTo, applySeek)
+// 轨道菜单打开期间固定显示控件，关闭后再按播放状态决定何时自动隐藏。
+watch(menuOpen, (open) => {
+  if (open) {
+    controlsVisible.value = true
+    clearHideTimer()
+    return
+  }
+  scheduleHideControls()
+})
 onMounted(() => {
   document.addEventListener('click', onDocumentClick)
   document.addEventListener('fullscreenchange', onFullscreenChange)
@@ -255,18 +417,35 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="playback-view">
-    <video v-if="plan?.Backend === 'web'" ref="video" controls playsinline preload="metadata"
+  <div class="playback-view" :class="{ 'controls-visible': controlsVisible }" tabindex="0"
+    @mousemove="showControls" @mouseleave="scheduleHideControls" @keydown="onKeydown">
+    <video v-if="plan?.Backend === 'web'" ref="video" playsinline preload="metadata"
       @timeupdate="onTimeUpdate" @loadedmetadata="onLoadedMetadata"
-      @playing="emit('playback', 'playing')"
+      @playing="onPlay"
+      @pause="onPause"
       @waiting="emit('playback', 'buffering')"
       @stalled="emit('playback', 'buffering')"
       @canplay="onCanPlay"
       @ended="emit('playback', 'ended')"
+      @volumechange="onVolumeChange"
+      @dblclick="toggleFullscreen"
+      @click="showControls"
       @error="onVideoError" />
-    <div v-if="plan?.Backend === 'web'" class="player-tools">
-      <button v-if="isHls" class="track-toggle" type="button" title="轨道设置" aria-label="轨道设置" @click.stop="menuOpen = !menuOpen">⚙</button>
-      <button class="rotate-toggle" type="button" :title="`画面旋转（当前 ${rotation}°）`" aria-label="画面旋转" @click.stop="cycleRotation">⟳ {{ rotation }}°</button>
+    <div v-if="plan?.Backend === 'web'" class="player-controls">
+      <div class="player-tools">
+        <button v-if="isHls" class="track-toggle" type="button" title="轨道设置" aria-label="轨道设置" @click.stop="menuOpen = !menuOpen">⚙</button>
+        <button class="rotate-toggle" type="button" :title="`画面旋转（当前 ${rotation}°）`" aria-label="画面旋转" @click.stop="cycleRotation">⟳ {{ rotation }}°</button>
+      </div>
+      <div class="player-bar">
+        <button class="ctrl-btn" type="button" @click.stop="togglePlay">{{ playing ? '暂停' : '播放' }}</button>
+        <span class="ctrl-time">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
+        <input class="ctrl-seek" type="range" min="0" :max="duration || 0" step="0.1" :value="currentTime"
+          aria-label="播放进度" @input="onSeekInput" @click.stop />
+        <button class="ctrl-btn" type="button" @click.stop="toggleMute">{{ muted ? '取消静音' : '静音' }}</button>
+        <input class="ctrl-volume" type="range" min="0" max="1" step="0.05" :value="muted ? 0 : volume"
+          aria-label="音量" @input="onVolumeInput" @click.stop />
+        <button class="ctrl-btn" type="button" @click.stop="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏' }}</button>
+      </div>
     </div>
     <TrackMenu v-if="isHls && menuOpen && trackState"
       :levels="trackState.levels" :current-level="trackState.currentLevel"

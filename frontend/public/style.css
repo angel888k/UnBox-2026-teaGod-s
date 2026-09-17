@@ -593,53 +593,74 @@ body {
 /* 下一集预载元素必须隐藏：它只负责拉取资源，不能接管当前播放画面。 */
 .preload-video { display: none; }
 
-.track-toggle {
+/* 自绘播放控件：原生 controls 会跟着旋转后的画面一起倾斜，且全屏时与工具按钮
+   不共存，所以改成独立于 <video> 的覆盖层；默认隐藏，鼠标靠近才淡入。 */
+.player-controls {
   position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
+  inset: 0;
   z-index: 3;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  color: var(--text);
-  background: var(--btn-bg);
-  border: 1px solid var(--border);
-  border-radius: 0.35rem;
-  cursor: pointer;
-  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
 }
 
-.track-toggle:hover { background: var(--btn-hover); }
+.playback-view.controls-visible .player-controls { opacity: 1; }
+
+.player-controls button,
+.player-controls input { pointer-events: auto; }
 
 /* 右上角工具组：轨道设置（仅 HLS）与画面旋转按钮并排 */
 .player-tools {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
-  z-index: 3;
   display: flex;
   align-items: center;
   gap: 0.35rem;
 }
 
+.player-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0));
+}
+
+.player-bar .ctrl-btn,
 .player-tools .track-toggle,
 .player-tools .rotate-toggle {
-  position: static;
-  min-width: 2rem;
   height: 2rem;
-  padding: 0 0.45rem;
+  padding: 0 0.6rem;
   color: var(--text);
   background: var(--btn-bg);
   border: 1px solid var(--border);
   border-radius: 0.35rem;
   cursor: pointer;
   font-size: 0.8rem;
+  line-height: 1;
+  white-space: nowrap;
 }
+
+.player-bar .ctrl-btn:hover,
+.player-tools .track-toggle:hover,
+.player-tools .rotate-toggle:hover { background: var(--btn-hover); }
 
 .player-tools .track-toggle { width: 2rem; padding: 0; }
 
-.player-tools .track-toggle:hover,
-.player-tools .rotate-toggle:hover { background: var(--btn-hover); }
+.ctrl-time {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ctrl-seek { flex: 1; min-width: 4rem; accent-color: var(--accent); }
+.ctrl-volume { width: 5rem; accent-color: var(--accent); }
 
 .track-menu {
   position: absolute;
