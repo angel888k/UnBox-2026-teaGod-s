@@ -432,11 +432,15 @@ describe('PlaybackView', () => {
     expect(wrapper.find('.player-controls').exists()).toBe(false)
   })
 
-  it('倍速下拉可切换播放速度', async () => {
+  it('倍速菜单可切换播放速度', async () => {
     const wrapper = await mountView()
     const video = wrapper.find('video').element as HTMLVideoElement
-    await wrapper.find('.ctrl-rate').setValue('1.5')
+    await wrapper.find('.rate-btn').trigger('click')
+    const option = wrapper.findAll('.rate-menu li').find((item) => item.text() === '1.5×')
+    expect(option).toBeTruthy()
+    await option!.trigger('click')
     expect(video.playbackRate).toBe(1.5)
+    expect(wrapper.find('.rate-menu').exists()).toBe(false)
   })
 
   it('支持画中画时提供按钮并可进入画中画', async () => {
@@ -445,9 +449,9 @@ describe('PlaybackView', () => {
     HTMLVideoElement.prototype.requestPictureInPicture = request as unknown as HTMLVideoElement['requestPictureInPicture']
     try {
       const wrapper = await mountView()
-      const button = wrapper.findAll('.ctrl-btn').find((b) => b.text().includes('画中画'))
-      expect(button).toBeTruthy()
-      await button!.trigger('click')
+      const button = wrapper.find('button[aria-label="画中画"]')
+      expect(button.exists()).toBe(true)
+      await button.trigger('click')
       expect(request).toHaveBeenCalled()
     } finally {
       Object.defineProperty(document, 'pictureInPictureEnabled', { configurable: true, value: undefined })

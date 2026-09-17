@@ -98,10 +98,12 @@ describe('web player controls contract', () => {
     expect(stylesheet).toMatch(/\.player-controls button,\s*\.player-controls input,\s*\.player-controls select\s*\{\s*pointer-events:\s*auto;\s*\}/)
   })
 
-  it('uses a glass control bar instead of an opaque band', () => {
-    expect(stylesheet).toMatch(/\.player-bar\s*\{[^}]*backdrop-filter:\s*blur\(/)
-    expect(stylesheet).toMatch(/\.player-bar\s*\{[^}]*left:\s*0\.5rem;/s)
-    expect(stylesheet).toMatch(/\.player-tools \.track-toggle,[\s\S]*?backdrop-filter:\s*blur\(/)
+  it('keeps the player controls fully transparent (no background band, no blur)', () => {
+    expect(stylesheet).toMatch(/\.player-bar\s*\{[^}]*background:\s*transparent;/s)
+    // 控件条/工具按钮不得用 backdrop-filter 压住画面（主题面板的模糊不受影响）
+    const controlRules = stylesheet.match(/\.player-(?:bar|tools)[^{]*\{[^}]*\}/g) ?? []
+    expect(controlRules.length).toBeGreaterThan(0)
+    expect(controlRules.join('\n')).not.toContain('backdrop-filter')
   })
 
   it('renders progress and volume sliders without the opaque native track', () => {

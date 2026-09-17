@@ -622,7 +622,7 @@ body {
   gap: 0.35rem;
 }
 
-/* 毛玻璃控件条：内缩成圆角玻璃条，只遮住自己那一条，不再用整幅黑底压图 */
+/* 全透明控件：不铺底、不做背景模糊，只靠图标投影保证亮画面下也看得清 */
 .player-bar {
   position: absolute;
   left: 0.5rem;
@@ -630,63 +630,72 @@ body {
   bottom: 0.5rem;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.5rem;
-  border-radius: 0.6rem;
-  background: rgba(10, 12, 18, 0.26);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  gap: 0.35rem;
+  padding: 0.25rem 0.35rem;
+  background: transparent;
 }
 
-/* 右上角工具按钮同样用玻璃底，避免出现两块不同观感的浮层 */
 .player-tools .track-toggle,
-.player-tools .rotate-toggle {
+.player-tools .rotate-toggle,
+.player-bar .ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 1.8rem;
-  padding: 0 0.5rem;
+  min-width: 1.8rem;
+  padding: 0 0.35rem;
   color: #fff;
-  background: rgba(10, 12, 18, 0.26);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 0.4rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
   cursor: pointer;
   font-size: 0.78rem;
   line-height: 1;
   white-space: nowrap;
-  backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.85));
 }
 
-.player-bar .ctrl-btn,
-.ctrl-rate {
-  height: 1.8rem;
-  padding: 0 0.5rem;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 0.4rem;
-  cursor: pointer;
-  font-size: 0.78rem;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.player-bar .ctrl-btn:hover,
 .player-tools .track-toggle:hover,
 .player-tools .rotate-toggle:hover,
-.ctrl-rate:hover { background: rgba(255, 255, 255, 0.2); }
+.player-bar .ctrl-btn:hover { background: rgba(255, 255, 255, 0.18); }
 
-.player-tools .track-toggle { width: 1.8rem; padding: 0; }
+.player-bar .ctrl-btn svg { display: block; width: 1.05rem; height: 1.05rem; fill: currentColor; }
 
-.ctrl-rate { padding: 0 0.25rem; }
-/* 展开的原生下拉项用不透明底，避免不同主题下看不清 */
-.ctrl-rate option { color: #111; background: #fff; }
+/* 倍速用自绘菜单，与其它控件同一观感（原生 select 无法与按钮统一） */
+.rate-control { position: relative; }
+
+.rate-menu {
+  position: absolute;
+  right: 0;
+  bottom: 2.1rem;
+  z-index: 4;
+  min-width: 4.2rem;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.rate-menu li {
+  padding: 0.25rem 0.45rem;
+  color: var(--text-soft);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.rate-menu li:hover { background: var(--btn-bg); }
+.rate-menu li.active { color: var(--accent); background: var(--btn-active-bg); }
 
 .ctrl-time {
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.92);
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
 
 /* 进度条/音量条：去掉原生不透明轨道，改成半透明轨道 + 白色滑块 */

@@ -83,12 +83,16 @@
 - **Web 播放器自绘控件 / 旋转 / 全屏**（`2026-09-17`）：
   - 播放控件改为自绘（`.player-controls` 覆盖层：播放/暂停、进度、时间、倍速、静音、
     音量、画中画、全屏），`<video>` 不再带 `controls`。原生控件会跟着旋转后的画面一起
-    倾斜，也没法和右上角工具按钮共存，所以必须自绘。控件条做成内缩的圆角毛玻璃条
-    （`backdrop-filter`），进度/音量条去掉了原生不透明轨道，改成半透明轨道 + 白色滑块；
-    画中画按钮只在 WebView 支持时出现（Chromium 标准 API / WebKit 的 webkitSetPresentationMode）。
-    **坑**：`.player-controls` 是 `pointer-events: none` 覆盖层，必须把每个交互元素
-    （button/input/select）单独放行；漏掉 `select` 会让点击穿透到 `<video>`，表现成
-    「点倍速却触发了播放/暂停」。`layoutContracts.test.ts` 有对应回归断言。
+    倾斜，也没法和右上角工具按钮共存，所以必须自绘。
+  - 观感：控件条与按钮**全透明**（不铺底、不做背景模糊），靠图标的 drop-shadow 保证
+    亮画面下也看得清；除倍速外全部用内联 SVG 图标，既避免文案变化挤压进度条，也不依赖
+    emoji 字体；进度/音量条去掉原生不透明轨道，改半透明轨道 + 白色滑块。
+  - 倍速是自绘按钮 + 弹出菜单（原生 select 无法与其它按钮统一观感）。
+  - 画中画按钮只在 WebView 支持时出现（Chromium 标准 API / WebKit 的
+    webkitSetPresentationMode）。
+  - **坑**：`.player-controls` 是 `pointer-events: none` 覆盖层，必须把每个交互元素
+    单独放行；曾漏掉 `select` 导致点击穿透到 `<video>`，表现成「点倍速却触发了
+    播放/暂停」。现在控件全是 button/input，`layoutContracts.test.ts` 有回归断言。
   - 控件默认隐藏，鼠标移入淡入；播放中静置 3 秒自动隐藏，暂停中或轨道菜单打开时保持可见。
     单击画面切换播放/暂停（延迟 250ms 判双击），双击画面切全屏。
   - 右上角旋转按钮按 0°→90°→180°→270° 循环；90/270 时按容器与视频实际比例等比缩放，

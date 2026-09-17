@@ -42,6 +42,7 @@ const volume = ref(1)
 const isFullscreen = ref(false)
 const controlsVisible = ref(false)
 const playbackRate = ref(1)
+const rateMenuOpen = ref(false)
 const pipActive = ref(false)
 const pipSupported = ref(false)
 const HIDE_CONTROLS_DELAY = 3000
@@ -224,12 +225,12 @@ function toggleMute(): void {
   if (element) element.muted = !element.muted
 }
 
-function onRateChange(event: Event): void {
+// selectRate 用自绘菜单设置倍速，避免原生 select 与其它控件观感不一致。
+function selectRate(rate: number): void {
   const element = video.value
-  if (!element) return
-  const next = Number((event.target as HTMLSelectElement).value)
-  element.playbackRate = next
-  playbackRate.value = next
+  playbackRate.value = rate
+  rateMenuOpen.value = false
+  if (element) element.playbackRate = rate
 }
 
 function onRateUpdate(): void {
@@ -434,7 +435,9 @@ function onSelectSubtitle(index: number) {
 }
 
 function onDocumentClick(event: MouseEvent) {
-  if (menuOpen.value && !(event.target as HTMLElement).closest('.track-menu, .track-toggle')) menuOpen.value = false
+  const target = event.target as HTMLElement
+  if (menuOpen.value && !target.closest('.track-menu, .track-toggle')) menuOpen.value = false
+  if (rateMenuOpen.value && !target.closest('.rate-menu, .rate-btn')) rateMenuOpen.value = false
 }
 
 async function attach(plan: PlaybackPlan | null) {
@@ -516,18 +519,34 @@ onBeforeUnmount(() => {
         <button class="rotate-toggle" type="button" :title="`画面旋转（当前 ${rotation}°）`" aria-label="画面旋转" @click.stop="cycleRotation">⟳ {{ rotation }}°</button>
       </div>
       <div class="player-bar">
-        <button class="ctrl-btn" type="button" @click.stop="togglePlay">{{ playing ? '暂停' : '播放' }}</button>
+        <button class="ctrl-btn" type="button" :title="playing ? '暂停' : '播放'" :aria-label="playing ? '暂停' : '播放'" @click.stop="togglePlay">
+          <svg v-if="playing" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
+          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
+        </button>
         <span class="ctrl-time">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
         <input class="ctrl-seek" type="range" min="0" :max="duration || 0" step="0.1" :value="currentTime"
           aria-label="播放进度" @input="onSeekInput" @click.stop />
-        <select class="ctrl-rate" :value="playbackRate" aria-label="播放速度" @change="onRateChange" @click.stop>
-          <option v-for="rate in RATE_OPTIONS" :key="rate" :value="rate">{{ rate }}×</option>
-        </select>
-        <button class="ctrl-btn" type="button" @click.stop="toggleMute">{{ muted ? '取消静音' : '静音' }}</button>
+        <div class="rate-control">
+          <button class="ctrl-btn rate-btn" type="button" title="播放速度" aria-label="播放速度"
+            @click.stop="rateMenuOpen = !rateMenuOpen">{{ playbackRate }}×</button>
+          <ul v-if="rateMenuOpen" class="rate-menu">
+            <li v-for="rate in RATE_OPTIONS" :key="rate" :class="{ active: rate === playbackRate }"
+              @click.stop="selectRate(rate)">{{ rate }}×</li>
+          </ul>
+        </div>
+        <button class="ctrl-btn" type="button" :title="muted ? '取消静音' : '静音'" :aria-label="muted ? '取消静音' : '静音'" @click.stop="toggleMute">
+          <svg v-if="muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm13.6 3 2.4 2.4-1.4 1.4L16.2 13.4 13.8 15.8 12.4 14.4 14.8 12 12.4 9.6l1.4-1.4 2.4 2.4 2.4-2.4 1.4 1.4z" /></svg>
+          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12 3a4 4 0 0 0-2-3.5v7A4 4 0 0 0 16 12zm-2-7.5v2.1a6.9 6.9 0 0 1 0 12.8v2.1a9 9 0 0 0 0-17z" /></svg>
+        </button>
         <input class="ctrl-volume" type="range" min="0" max="1" step="0.05" :value="muted ? 0 : volume"
           aria-label="音量" @input="onVolumeInput" @click.stop />
-        <button v-if="pipSupported" class="ctrl-btn" type="button" @click.stop="togglePictureInPicture">{{ pipActive ? '退出画中画' : '画中画' }}</button>
-        <button class="ctrl-btn" type="button" @click.stop="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏' }}</button>
+        <button v-if="pipSupported" class="ctrl-btn" type="button" :title="pipActive ? '退出画中画' : '画中画'" :aria-label="pipActive ? '退出画中画' : '画中画'" @click.stop="togglePictureInPicture">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5zm2 2v10h14V7H5zm7 4h5v4h-5v-4z" /></svg>
+        </button>
+        <button class="ctrl-btn" type="button" :title="isFullscreen ? '退出全屏' : '全屏'" :aria-label="isFullscreen ? '退出全屏' : '全屏'" @click.stop="toggleFullscreen">
+          <svg v-if="isFullscreen" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4V7h3V4h2zm6 0h2v3h3v2h-5V4zM4 15h5v5H7v-3H4v-2zm11 0h5v2h-3v3h-2v-5z" /></svg>
+          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H6v3H4zm11-5h5v5h-2V6h-3V4zM4 15h2v3h3v2H4v-5zm14 0h2v5h-5v-2h3v-3z" /></svg>
+        </button>
       </div>
     </div>
     <TrackMenu v-if="isHls && menuOpen && trackState"
