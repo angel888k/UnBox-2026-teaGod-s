@@ -41,8 +41,15 @@ const muted = ref(false)
 const volume = ref(1)
 const isFullscreen = ref(false)
 const controlsVisible = ref(false)
+const playbackRate = ref(1)
+const pipActive = ref(false)
+const pipSupported = ref(false)
 const HIDE_CONTROLS_DELAY = 3000
+// 单击画面切换播放/暂停，但要等一小会儿确认不是双击（双击是切全屏）。
+const CLICK_TOGGLE_DELAY = 250
+const RATE_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 let hideTimer: ReturnType<typeof setTimeout> | null = null
+let clickTimer: ReturnType<typeof setTimeout> | null = null
 let hls: Hls | null = null
 let flv: ReturnType<typeof mpegts.createPlayer> | null = null
 let fallbackSent = false
@@ -67,7 +74,12 @@ function cleanup() {
   playing.value = false
   currentTime.value = 0
   duration.value = 0
+  pipActive.value = false
   clearHideTimer()
+  if (clickTimer !== null) {
+    clearTimeout(clickTimer)
+    clickTimer = null
+  }
   hls?.destroy(); hls = null
   flv?.destroy(); flv = null
   if (video.value) { video.value.pause(); video.value.removeAttribute('src'); video.value.load() }
@@ -210,6 +222,67 @@ function togglePlay(): void {
 function toggleMute(): void {
   const element = video.value
   if (element) element.muted = !element.muted
+}
+
+function onRateChange(event: Event): void {
+  const element = video.value
+  if (!element) return
+  const next = Number((event.target as HTMLSelectElement).value)
+  element.playbackRate = next
+  playbackRate.value = next
+}
+
+function onRateUpdate(): void {
+  const element = video.value
+  if (element) playbackRate.value = element.playbackRate
+}
+
+// togglePictureInPicture 优先用标准 API，Safari/WebKitGTK 回退到 webkit 模式切换。
+async function togglePictureInPicture(): Promise<void> {
+  const element = video.value as (HTMLVideoElement & {
+    webkitSetPresentationMode?: (mode: string) => void
+  }) | null
+  if (!element) return
+  try {
+    if (document.pictureInPictureElement === element && document.exitPictureInPicture) {
+      await document.exitPictureInPicture()
+      return
+    }
+    const request = element.requestPictureInPicture?.bind(element)
+    if (request) await request()
+    else element.webkitSetPresentationMode?.('picture-in-picture')
+  } catch { /* 画中画不可用时静默忽略 */ }
+}
+
+function onEnterPictureInPicture(): void { pipActive.value = true }
+function onLeavePictureInPicture(): void { pipActive.value = false }
+
+// detectPictureInPicture 判断当前 WebView 是否支持画中画：Chromium 用标准 API，
+// WebKit（Safari / WebKitGTK）走 webkitSetPresentationMode。
+function detectPictureInPicture(): void {
+  if (typeof HTMLVideoElement === 'undefined') return
+  const doc = document as Document & { pictureInPictureEnabled?: boolean }
+  const webkit = 'webkitSetPresentationMode' in HTMLVideoElement.prototype
+  const standard = doc.pictureInPictureEnabled === true && 'requestPictureInPicture' in HTMLVideoElement.prototype
+  pipSupported.value = webkit || standard
+}
+
+// onVideoClick 单击画面切换播放/暂停；若是双击（切全屏）则取消这次单击动作。
+function onVideoClick(): void {
+  showControls()
+  if (clickTimer !== null) return
+  clickTimer = setTimeout(() => {
+    clickTimer = null
+    togglePlay()
+  }, CLICK_TOGGLE_DELAY)
+}
+
+function onVideoDblClick(): void {
+  if (clickTimer !== null) {
+    clearTimeout(clickTimer)
+    clickTimer = null
+  }
+  toggleFullscreen()
 }
 
 function onSeekInput(event: Event): void {
@@ -377,6 +450,8 @@ async function attach(plan: PlaybackPlan | null) {
   if (generation !== attachGeneration || plan !== props.plan) return
   const element = video.value
   if (!element) return
+  // 用户选过的倍速在切集/换源后继续保持。
+  element.playbackRate = playbackRate.value
   applyRotation()
   if (plan.Kind === 'hls' && Hls.isSupported()) {
     hls = new Hls({ enableWorker: false })
@@ -404,6 +479,7 @@ watch(menuOpen, (open) => {
   scheduleHideControls()
 })
 onMounted(() => {
+  detectPictureInPicture()
   document.addEventListener('click', onDocumentClick)
   document.addEventListener('fullscreenchange', onFullscreenChange)
   window.addEventListener('resize', applyRotation)
@@ -428,8 +504,11 @@ onBeforeUnmount(() => {
       @canplay="onCanPlay"
       @ended="emit('playback', 'ended')"
       @volumechange="onVolumeChange"
-      @dblclick="toggleFullscreen"
-      @click="showControls"
+      @ratechange="onRateUpdate"
+      @enterpictureinpicture="onEnterPictureInPicture"
+      @leavepictureinpicture="onLeavePictureInPicture"
+      @dblclick="onVideoDblClick"
+      @click="onVideoClick"
       @error="onVideoError" />
     <div v-if="plan?.Backend === 'web'" class="player-controls">
       <div class="player-tools">
@@ -441,9 +520,13 @@ onBeforeUnmount(() => {
         <span class="ctrl-time">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
         <input class="ctrl-seek" type="range" min="0" :max="duration || 0" step="0.1" :value="currentTime"
           aria-label="播放进度" @input="onSeekInput" @click.stop />
+        <select class="ctrl-rate" :value="playbackRate" aria-label="播放速度" @change="onRateChange" @click.stop>
+          <option v-for="rate in RATE_OPTIONS" :key="rate" :value="rate">{{ rate }}×</option>
+        </select>
         <button class="ctrl-btn" type="button" @click.stop="toggleMute">{{ muted ? '取消静音' : '静音' }}</button>
         <input class="ctrl-volume" type="range" min="0" max="1" step="0.05" :value="muted ? 0 : volume"
           aria-label="音量" @input="onVolumeInput" @click.stop />
+        <button v-if="pipSupported" class="ctrl-btn" type="button" @click.stop="togglePictureInPicture">{{ pipActive ? '退出画中画' : '画中画' }}</button>
         <button class="ctrl-btn" type="button" @click.stop="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏' }}</button>
       </div>
     </div>

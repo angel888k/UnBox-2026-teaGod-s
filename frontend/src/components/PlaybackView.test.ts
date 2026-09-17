@@ -432,4 +432,55 @@ describe('PlaybackView', () => {
     expect(wrapper.find('.player-controls').exists()).toBe(false)
   })
 
+  it('倍速下拉可切换播放速度', async () => {
+    const wrapper = await mountView()
+    const video = wrapper.find('video').element as HTMLVideoElement
+    await wrapper.find('.ctrl-rate').setValue('1.5')
+    expect(video.playbackRate).toBe(1.5)
+  })
+
+  it('支持画中画时提供按钮并可进入画中画', async () => {
+    Object.defineProperty(document, 'pictureInPictureEnabled', { configurable: true, value: true })
+    const request = vi.fn(() => Promise.resolve({} as PictureInPictureWindow))
+    HTMLVideoElement.prototype.requestPictureInPicture = request as unknown as HTMLVideoElement['requestPictureInPicture']
+    try {
+      const wrapper = await mountView()
+      const button = wrapper.findAll('.ctrl-btn').find((b) => b.text().includes('画中画'))
+      expect(button).toBeTruthy()
+      await button!.trigger('click')
+      expect(request).toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(document, 'pictureInPictureEnabled', { configurable: true, value: undefined })
+      delete (HTMLVideoElement.prototype as unknown as Record<string, unknown>).requestPictureInPicture
+    }
+  })
+
+  it('单击画面切换播放/暂停，双击则只切全屏', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = await mountView()
+      const video = wrapper.find('video').element as HTMLVideoElement
+      const box = video.parentElement as HTMLElement
+      const pause = vi.fn()
+      video.pause = pause as unknown as HTMLVideoElement['pause']
+      Object.defineProperty(video, 'paused', { configurable: true, get: () => false })
+
+      await wrapper.find('video').trigger('click')
+      vi.advanceTimersByTime(250)
+      expect(pause).toHaveBeenCalledTimes(1)
+
+      // 双击时取消单击的播放/暂停动作，只做全屏
+      pause.mockClear()
+      const fullscreen = vi.fn(() => Promise.resolve())
+      box.requestFullscreen = fullscreen as unknown as HTMLElement['requestFullscreen']
+      await wrapper.find('video').trigger('click')
+      await wrapper.find('video').trigger('dblclick')
+      vi.advanceTimersByTime(250)
+      expect(pause).not.toHaveBeenCalled()
+      expect(fullscreen).toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
 })
