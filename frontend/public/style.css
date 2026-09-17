@@ -577,6 +577,18 @@ body {
 
 .playback-view { position: relative; width: 100%; background: var(--deep); min-height: 180px; aspect-ratio: 16 / 9; display: grid; place-items: center; overflow: hidden; }
 .playback-view video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+
+/* 画面旋转：transform 过渡 + 容器裁剪，避免旋转过程中内容溢出 */
+.playback-view video { transition: transform 0.2s ease; }
+
+/* 全屏由整个容器承担：原生按钮只全屏 <video>，会让右上角控件一起消失 */
+.playback-view:fullscreen {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: auto;
+  background: #000;
+}
 .mpv-status, .playback-empty { color: var(--text-dim); font-size: 0.9rem; }
 /* 下一集预载元素必须隐藏：它只负责拉取资源，不能接管当前播放画面。 */
 .preload-video { display: none; }
@@ -598,6 +610,36 @@ body {
 }
 
 .track-toggle:hover { background: var(--btn-hover); }
+
+/* 右上角工具组：轨道设置（仅 HLS）与画面旋转按钮并排 */
+.player-tools {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.player-tools .track-toggle,
+.player-tools .rotate-toggle {
+  position: static;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.45rem;
+  color: var(--text);
+  background: var(--btn-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.player-tools .track-toggle { width: 2rem; padding: 0; }
+
+.player-tools .track-toggle:hover,
+.player-tools .rotate-toggle:hover { background: var(--btn-hover); }
 
 .track-menu {
   position: absolute;

@@ -982,7 +982,9 @@ async function doPlayEpisode(site: string, epID: string, epName: string, source:
   vodAutomation.beginSession()
   void releasePreload()
   const token = beginPlayback('vod')
-  vodPlaybackPlan.value = null
+  // 切集/换源时不预先清空播放计划：清空会卸载 <video>，导致全屏被中断、画面黑屏，
+  // 新流就绪后还得用户手动点一次播放。新计划就绪后直接替换；失败时下面的 catch 会清空。
+  if (vodPlaybackPlan.value?.Backend !== 'web') vodPlaybackPlan.value = null
   vodPlaybackToken.value = 0
   vodPlaybackStatus.value = 'preparing'
   vodPlaybackError.value = ''

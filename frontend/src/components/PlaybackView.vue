@@ -31,6 +31,8 @@ const emit = defineEmits<{
 const video = ref<HTMLVideoElement | null>(null)
 const trackState = ref<TrackState | null>(null)
 const menuOpen = ref(false)
+// 画面旋转角度（度），90/270 时按容器比例缩放，避免旋转后画面被裁掉。
+const rotation = ref(0)
 let hls: Hls | null = null
 let flv: ReturnType<typeof mpegts.createPlayer> | null = null
 let fallbackSent = false
@@ -38,6 +40,8 @@ let errorReported = false
 let networkRestarts = 0
 let mediaRecoveries = 0
 let attachGeneration = 0
+// autoplayPending：本次挂载的流就绪后是否要自动开始播放。
+let autoplayPending = false
 
 // 传输抖动（签名过期、CDN 限流）与「后端确实解不了」必须区别对待：前者原地重试，
 // 后者直接换 mpv。预算内的重试只影响这一条播放，不重置后端选择。
@@ -49,9 +53,71 @@ function cleanup() {
   attachGeneration++
   trackState.value?.detach(); trackState.value = null
   menuOpen.value = false
+  autoplayPending = false
   hls?.destroy(); hls = null
   flv?.destroy(); flv = null
   if (video.value) { video.value.pause(); video.value.removeAttribute('src'); video.value.load() }
+}
+
+// cycleRotation 依次切换 0° → 90° → 180° → 270° → 0°。
+function cycleRotation() {
+  rotation.value = (rotation.value + 90) % 360
+  applyRotation()
+}
+
+// applyRotation 把画面按当前角度旋转。旋转 90/270 时内容宽高互换，需要按容器
+// 与视频的实际比例做一次等比缩放，否则宽画面转竖后会溢出、被 overflow 裁掉。
+function applyRotation() {
+  const element = video.value
+  const box = element?.parentElement
+  if (!element || !box) return
+  const degrees = rotation.value
+  let scale = 1
+  if (degrees % 180 !== 0) {
+    const boxWidth = box.clientWidth
+    const boxHeight = box.clientHeight
+    const videoWidth = element.videoWidth || boxWidth
+    const videoHeight = element.videoHeight || boxHeight
+    if (boxWidth > 0 && boxHeight > 0 && videoWidth > 0 && videoHeight > 0) {
+      // object-fit: contain 下内容在元素内的显示尺寸
+      let contentWidth = boxWidth
+      let contentHeight = (boxWidth * videoHeight) / videoWidth
+      if (contentHeight > boxHeight) {
+        contentHeight = boxHeight
+        contentWidth = (boxHeight * videoWidth) / videoHeight
+      }
+      // 旋转后内容宽高互换，等比缩放到容器内
+      scale = Math.min(boxWidth / contentHeight, boxHeight / contentWidth)
+    }
+  }
+  element.style.transform = degrees === 0 ? '' : `rotate(${degrees}deg) scale(${scale})`
+}
+
+// requestAutoplay 在流就绪后自动起播：切集/换源后画面应当接着播，
+// 而不是停在那里等用户再点一次原生播放按钮。被浏览器拦截时保持暂停。
+function requestAutoplay() {
+  const element = video.value
+  if (!element || !autoplayPending) return
+  autoplayPending = false
+  try {
+    const result = element.play()
+    if (result && typeof result.catch === 'function') result.catch(() => {})
+  } catch { /* 自动播放被拦截：保留原生控件供手动播放 */ }
+}
+
+// onFullscreenChange 让整个播放容器进全屏。原生全屏按钮只把 <video> 全屏，
+// 那样右上角的轨道/旋转控件会跟着消失；检测到 video 独占全屏就换成容器全屏。
+function onFullscreenChange() {
+  const element = video.value
+  const box = element?.parentElement
+  if (element && box && document.fullscreenElement === element) {
+    const request = box.requestFullscreen?.bind(box)
+    if (request) {
+      const result = request()
+      if (result && typeof result.catch === 'function') result.catch(() => {})
+    }
+  }
+  applyRotation()
 }
 
 function requestFallback() {
@@ -129,6 +195,12 @@ function applySeek() {
 
 function onLoadedMetadata() {
   applySeek()
+  applyRotation()
+}
+
+function onCanPlay() {
+  emit('playback', 'ready')
+  requestAutoplay()
 }
 
 function onSelectSubtitle(index: number) {
@@ -147,10 +219,12 @@ async function attach(plan: PlaybackPlan | null) {
   networkRestarts = 0
   mediaRecoveries = 0
   if (!plan || plan.Backend !== 'web') return
+  autoplayPending = true
   await nextTick()
   if (generation !== attachGeneration || plan !== props.plan) return
   const element = video.value
   if (!element) return
+  applyRotation()
   if (plan.Kind === 'hls' && Hls.isSupported()) {
     hls = new Hls({ enableWorker: false })
     hls.on(Hls.Events.ERROR, onHlsError)
@@ -167,9 +241,15 @@ async function attach(plan: PlaybackPlan | null) {
 
 watch(() => props.plan, attach, { immediate: true })
 watch(() => props.seekTo, applySeek)
-onMounted(() => document.addEventListener('click', onDocumentClick))
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick)
+  document.addEventListener('fullscreenchange', onFullscreenChange)
+  window.addEventListener('resize', applyRotation)
+})
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocumentClick)
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  window.removeEventListener('resize', applyRotation)
   cleanup()
 })
 </script>
@@ -181,10 +261,13 @@ onBeforeUnmount(() => {
       @playing="emit('playback', 'playing')"
       @waiting="emit('playback', 'buffering')"
       @stalled="emit('playback', 'buffering')"
-      @canplay="emit('playback', 'ready')"
+      @canplay="onCanPlay"
       @ended="emit('playback', 'ended')"
       @error="onVideoError" />
-    <button v-if="isHls" class="track-toggle" type="button" title="轨道设置" aria-label="轨道设置" @click.stop="menuOpen = !menuOpen">⚙</button>
+    <div v-if="plan?.Backend === 'web'" class="player-tools">
+      <button v-if="isHls" class="track-toggle" type="button" title="轨道设置" aria-label="轨道设置" @click.stop="menuOpen = !menuOpen">⚙</button>
+      <button class="rotate-toggle" type="button" :title="`画面旋转（当前 ${rotation}°）`" aria-label="画面旋转" @click.stop="cycleRotation">⟳ {{ rotation }}°</button>
+    </div>
     <TrackMenu v-if="isHls && menuOpen && trackState"
       :levels="trackState.levels" :current-level="trackState.currentLevel"
       :audio-tracks="trackState.audioTracks" :current-audio="trackState.currentAudio"

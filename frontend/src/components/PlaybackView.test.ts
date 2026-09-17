@@ -333,4 +333,47 @@ describe('PlaybackView', () => {
     expect(wrapper.emitted('playback')).toEqual([['error', undefined]])
   })
 
+  it('旋转按钮按 90° 步进切换画面角度', async () => {
+    const wrapper = await mountView()
+    const button = wrapper.find('.rotate-toggle')
+    expect(button.exists()).toBe(true)
+    expect(button.text()).toContain('0°')
+    const video = wrapper.find('video').element as HTMLVideoElement
+
+    await button.trigger('click')
+    expect(button.text()).toContain('90°')
+    expect(video.style.transform).toContain('rotate(90deg)')
+
+    await button.trigger('click')
+    expect(video.style.transform).toContain('rotate(180deg)')
+
+    await button.trigger('click')
+    expect(video.style.transform).toContain('rotate(270deg)')
+
+    await button.trigger('click')
+    expect(button.text()).toContain('0°')
+    expect(video.style.transform).toBe('')
+  })
+
+  it('流就绪后自动开始播放，不需要用户再点一次', async () => {
+    const wrapper = await mountView()
+    const video = wrapper.find('video').element as HTMLVideoElement
+    const play = vi.fn(() => Promise.resolve())
+    video.play = play as unknown as HTMLVideoElement['play']
+    await wrapper.find('video').trigger('canplay')
+    expect(play).toHaveBeenCalled()
+  })
+
+  it('原生 video 全屏时改由整个播放容器全屏，保住右上角控件', async () => {
+    const wrapper = await mountView()
+    const video = wrapper.find('video').element as HTMLVideoElement
+    const box = video.parentElement as HTMLElement
+    const request = vi.fn(() => Promise.resolve())
+    box.requestFullscreen = request as unknown as HTMLElement['requestFullscreen']
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => video })
+    document.dispatchEvent(new Event('fullscreenchange'))
+    expect(request).toHaveBeenCalled()
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => null })
+  })
+
 })

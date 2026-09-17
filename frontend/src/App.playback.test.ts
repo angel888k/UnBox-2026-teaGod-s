@@ -221,4 +221,9 @@ describe('App 播放事件接线', () => {
     expect(app).toContain('onVodPlaybackSignal(vodPlaybackToken, state, message)')
     expect(app).toContain("Events.On('playback:event'")
   })
+
+  // 切集时清空 plan 会卸载 <video>，导致全屏退出、画面黑屏且新流不自动播放。
+  it('切换剧集时不预先清空 web 播放计划', () => {
+    expect(app).toContain("if (vodPlaybackPlan.value?.Backend !== 'web') vodPlaybackPlan.value = null")
+  })
 })
