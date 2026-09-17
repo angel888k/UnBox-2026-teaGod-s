@@ -606,32 +606,33 @@ body {
 
 .playback-view.controls-visible .player-controls { opacity: 1; }
 
-/* 覆盖层本身不拦截事件，只有真正的控件才接收点击；漏掉 select 会让点击穿透到
-   <video>，表现为点倍速却触发了画面的播放/暂停。 */
+/* 覆盖层本身不拦截事件（否则整条区域都点不到画面），只放行真正的交互区域：
+   button/input 以及倍速弹出菜单。放行清单必须覆盖每个可点元素——漏掉 select 或
+   菜单 <li> 都会让点击穿透到 <video>，表现为「点控件却触发了播放/暂停」。 */
 .player-controls button,
 .player-controls input,
-.player-controls select { pointer-events: auto; }
+.player-controls .rate-menu { pointer-events: auto; }
 
 /* 右上角工具组：轨道设置（仅 HLS）与画面旋转按钮并排 */
 .player-tools {
   position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
+  top: 0.2rem;
+  right: 0.3rem;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.25rem;
 }
 
 /* 全透明控件：不铺底、不做背景模糊，只靠图标投影保证亮画面下也看得清 */
 .player-bar {
   position: absolute;
-  left: 0.5rem;
-  right: 0.5rem;
-  bottom: 0.5rem;
+  left: 0.3rem;
+  right: 0.3rem;
+  bottom: 0.15rem;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.35rem;
+  gap: 0.25rem;
+  padding: 0.1rem 0.2rem;
   background: transparent;
 }
 
@@ -641,9 +642,9 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 1.8rem;
-  min-width: 1.8rem;
-  padding: 0 0.35rem;
+  height: 1.65rem;
+  min-width: 1.65rem;
+  padding: 0 0.3rem;
   color: #fff;
   background: transparent;
   border: 1px solid transparent;
@@ -659,7 +660,7 @@ body {
 .player-tools .rotate-toggle:hover,
 .player-bar .ctrl-btn:hover { background: rgba(255, 255, 255, 0.18); }
 
-.player-bar .ctrl-btn svg { display: block; width: 1.05rem; height: 1.05rem; fill: currentColor; }
+.player-bar .ctrl-btn svg { display: block; width: 1rem; height: 1rem; fill: currentColor; }
 
 /* 倍速用自绘菜单，与其它控件同一观感（原生 select 无法与按钮统一） */
 .rate-control { position: relative; }
@@ -692,7 +693,7 @@ body {
 
 .ctrl-time {
   color: rgba(255, 255, 255, 0.92);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);

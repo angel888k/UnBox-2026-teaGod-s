@@ -91,8 +91,9 @@
   - 画中画按钮只在 WebView 支持时出现（Chromium 标准 API / WebKit 的
     webkitSetPresentationMode）。
   - **坑**：`.player-controls` 是 `pointer-events: none` 覆盖层，必须把每个交互元素
-    单独放行；曾漏掉 `select` 导致点击穿透到 `<video>`，表现成「点倍速却触发了
-    播放/暂停」。现在控件全是 button/input，`layoutContracts.test.ts` 有回归断言。
+    单独放行；先后漏掉过 `select` 与倍速菜单 `.rate-menu`，都表现为点击穿透到
+    `<video>`、点控件却触发了播放/暂停。放行清单目前是 `button` / `input` /
+    `.rate-menu`，`layoutContracts.test.ts` 有回归断言——**新增可点元素时必须同步加**。
   - 控件默认隐藏，鼠标移入淡入；播放中静置 3 秒自动隐藏，暂停中或轨道菜单打开时保持可见。
     单击画面切换播放/暂停（延迟 250ms 判双击），双击画面切全屏。
   - 右上角旋转按钮按 0°→90°→180°→270° 循环；90/270 时按容器与视频实际比例等比缩放，
