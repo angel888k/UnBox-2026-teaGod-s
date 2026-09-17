@@ -90,3 +90,22 @@ describe('card badge theme contract', () => {
     expect(relLum(m![1])).toBeGreaterThan(0.5)
   })
 })
+
+describe('web player controls contract', () => {
+  it('lets every interactive control receive clicks through the overlay', () => {
+    // 覆盖层是 pointer-events: none，只给交互元素单独放行。漏掉 select 会让点击
+    // 穿透到 <video>，表现为点倍速却触发了画面的播放/暂停。
+    expect(stylesheet).toMatch(/\.player-controls button,\s*\.player-controls input,\s*\.player-controls select\s*\{\s*pointer-events:\s*auto;\s*\}/)
+  })
+
+  it('uses a glass control bar instead of an opaque band', () => {
+    expect(stylesheet).toMatch(/\.player-bar\s*\{[^}]*backdrop-filter:\s*blur\(/)
+    expect(stylesheet).toMatch(/\.player-bar\s*\{[^}]*left:\s*0\.5rem;/s)
+    expect(stylesheet).toMatch(/\.player-tools \.track-toggle,[\s\S]*?backdrop-filter:\s*blur\(/)
+  })
+
+  it('renders progress and volume sliders without the opaque native track', () => {
+    expect(stylesheet).toMatch(/\.ctrl-seek,\s*\.ctrl-volume\s*\{[^}]*appearance:\s*none;/)
+    expect(stylesheet).toMatch(/\.ctrl-seek::-webkit-slider-runnable-track,[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.28\);/)
+  })
+})

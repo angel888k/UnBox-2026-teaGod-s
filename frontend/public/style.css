@@ -606,8 +606,11 @@ body {
 
 .playback-view.controls-visible .player-controls { opacity: 1; }
 
+/* 覆盖层本身不拦截事件，只有真正的控件才接收点击；漏掉 select 会让点击穿透到
+   <video>，表现为点倍速却触发了画面的播放/暂停。 */
 .player-controls button,
-.player-controls input { pointer-events: auto; }
+.player-controls input,
+.player-controls select { pointer-events: auto; }
 
 /* 右上角工具组：轨道设置（仅 HLS）与画面旋转按钮并排 */
 .player-tools {
@@ -619,41 +622,59 @@ body {
   gap: 0.35rem;
 }
 
-/* 控件条压在半透明渐变上，尽量少遮挡画面；按钮本身也是半透明+背景模糊 */
+/* 毛玻璃控件条：内缩成圆角玻璃条，只遮住自己那一条，不再用整幅黑底压图 */
 .player-bar {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 0.5rem;
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.35rem 0.6rem 0.45rem;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.08) 65%, transparent);
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.6rem;
+  background: rgba(10, 12, 18, 0.26);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
 }
 
-.player-bar .ctrl-btn,
+/* 右上角工具按钮同样用玻璃底，避免出现两块不同观感的浮层 */
 .player-tools .track-toggle,
-.player-tools .rotate-toggle,
-.ctrl-rate {
+.player-tools .rotate-toggle {
   height: 1.8rem;
   padding: 0 0.5rem;
   color: #fff;
-  background: rgba(0, 0, 0, 0.32);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 0.35rem;
+  background: rgba(10, 12, 18, 0.26);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.4rem;
   cursor: pointer;
   font-size: 0.78rem;
   line-height: 1;
   white-space: nowrap;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+.player-bar .ctrl-btn,
+.ctrl-rate {
+  height: 1.8rem;
+  padding: 0 0.5rem;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.4rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .player-bar .ctrl-btn:hover,
 .player-tools .track-toggle:hover,
 .player-tools .rotate-toggle:hover,
-.ctrl-rate:hover { background: rgba(0, 0, 0, 0.55); }
+.ctrl-rate:hover { background: rgba(255, 255, 255, 0.2); }
 
 .player-tools .track-toggle { width: 1.8rem; padding: 0; }
 
@@ -668,8 +689,52 @@ body {
   white-space: nowrap;
 }
 
-.ctrl-seek { flex: 1; min-width: 4rem; accent-color: var(--accent); }
-.ctrl-volume { width: 5rem; accent-color: var(--accent); }
+/* 进度条/音量条：去掉原生不透明轨道，改成半透明轨道 + 白色滑块 */
+.ctrl-seek,
+.ctrl-volume {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 1.1rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ctrl-seek { flex: 1; min-width: 4rem; }
+.ctrl-volume { width: 5rem; }
+
+.ctrl-seek::-webkit-slider-runnable-track,
+.ctrl-volume::-webkit-slider-runnable-track {
+  height: 0.25rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.ctrl-seek::-webkit-slider-thumb,
+.ctrl-volume::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-top: -0.22rem;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.ctrl-seek::-moz-range-track,
+.ctrl-volume::-moz-range-track {
+  height: 0.25rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.ctrl-seek::-moz-range-thumb,
+.ctrl-volume::-moz-range-thumb {
+  width: 0.7rem;
+  height: 0.7rem;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+}
 
 .track-menu {
   position: absolute;
