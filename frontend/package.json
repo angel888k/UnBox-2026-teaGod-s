@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@wailsio/runtime": "3.0.0-beta.9",
+    "@wailsio/runtime": "3.0.0-beta.26",
     "dompurify": "^3.4.14",
     "hls.js": "1.7.1",
     "mpegts.js": "1.8.2",

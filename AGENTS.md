@@ -8,7 +8,7 @@
 UnBox 是一个跨平台（Windows / macOS / Linux）桌面媒体播放器，完全兼容 TVBox，
 目标「安装即用、无手动依赖」。依赖由 [mise](https://mise.jdx.dev) 管理。
 
-技术栈：Go 1.26.3 + Wails v3（**3.0.0-beta.9 钉死**）+ Vue3 + TypeScript。
+技术栈：Go 1.26.3 + Wails v3（**3.0.0-beta.26 钉死**）+ Vue3 + TypeScript。
 
 ## 常用命令
 

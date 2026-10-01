@@ -242,7 +242,7 @@
 ## 已排出的方向（设计决策，勿重开）
 
 - 丢弃 mpvlib；三平台统一「Web + 外部 mpv」。
-- Wails v3 钉死 3.0.0-beta.9（Linux 后端为 GTK4）。
+- Wails v3 钉死 3.0.0-beta.26（Linux 后端为 GTK4）；升版必须同步四处：go.mod、mise.toml、.github/workflows/release.yml 的 `wails3@`、frontend 的 `@wailsio/runtime`（三者版本必须一致，否则桥接不匹配）。
 - 播放路由：Web 优先（H.264 HTTP），mpv 兜底（HEVC/RTMP/本地/无 MSE）。
 - CMS JSON 协议实测要点（详见 M2 spec §2.1）：分类从 `type_id`/`type_name` 派生；
   `vod_play_from` 列表用 `,`、详情用 `$$$`；剧集 `$$$`/`#`/`$`。
