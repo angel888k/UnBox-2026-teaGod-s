@@ -1034,6 +1034,68 @@ body {
   border-color: rgba(255, 123, 114, 0.5);
 }
 
+/* ---- 详情加载中：详情请求在跑时挂在底部，z-index 低于弹窗遮罩（100） ---- */
+
+.detail-loading {
+  position: fixed;
+  bottom: 1.25rem;
+  left: 50%;
+  z-index: 90;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+/* ---- 点播源失效弹窗 ---- */
+
+.vod-source-dead { width: min(460px, 92vw); }
+
+.vod-source-dead p {
+  margin: 0.75rem 0 0;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+/* 原始错误串（Go/浏览器报的英文原因），仅作排障参考，别让它抢走正文。 */
+.vod-source-dead-cause {
+  max-height: 4.5rem;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.vod-source-dead-hint { color: var(--text-soft); font-size: 0.85rem; }
+
+.vod-source-dead-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.vod-source-dead-actions button {
+  padding: 0.4rem 0.75rem;
+  color: var(--text);
+  background: var(--btn-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+
+.vod-source-dead-actions button:hover { background: var(--btn-hover); }
+
+.vod-source-dead-actions button.primary {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 @media (max-width: 520px) {
   .settings-option-row {
     align-items: flex-start;

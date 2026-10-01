@@ -14,6 +14,7 @@ import { resolveSkipAction, type SkipRuntime, type VodSkipMarks } from './vodSki
 import { initializeHomeState } from './startup'
 import { playbackPlanForMode, resolvePlaybackFallback, shouldPauseStalePlayback, shouldRecordVodProgress, shouldShowMpvInstallPrompt, type ActivePlaybackSession, type PlaybackScope, type PlaybackStatus } from './playbackScope'
 import { createVodSearchCache, isCurrentVodCategoryRequest, isVodSearchCacheValid, nextVodCategoryRequest, nextVodSearchRequest, pickResumeSeek, removeVodFavorite, removeVodHistory, removeVodSearchHistory, resolveVodSelection, shouldShowVodNoResults, upsertVodSearchHistory, vodBackTarget, vodResumeView, vodSearchQueryForReturn, type VodDetailOrigin, type VodSearchCache, type VodView } from './vodNavigation'
+import { buildVodSourceDeadInfo, vodSourceDeadBackLabel, vodSourceDeadBackTarget, type VodSourceDeadInfo } from './vodSourceDead'
 import { appendVodItems, hasNextVodPage, nextVodPage } from './vodPagination'
 import { formatUpdatedAt, normalizeLeaderboard } from './donation'
 import DOMPurify from 'dompurify'
@@ -139,6 +140,11 @@ const libraryThumbPipeline = createLibraryThumbPipeline({
 })
 // 延迟续播目标：进详情时记下上次看的集数与进度，等用户点播放才套用。
 const vodResume = ref<{ EpID: string; Progress: number } | null>(null)
+// 详情加载中标题：详情请求还在跑时非空，底部提示条显示「正在加载《…》…」，
+// 避免 15 秒超时期间页面看起来像卡死。同时兼作并发入口闸门。
+const vodDetailLoading = ref('')
+// 点播源失效弹窗：详情请求失败（站点连不上 / 超时）时弹出，给出换站搜索的出口。
+const vodSourceDead = ref<{ info: VodSourceDeadInfo; origin: VodDetailOrigin } | null>(null)
 const logs = ref('')
 const showLogs = ref(false)
 const copyMsg = ref('')
@@ -273,6 +279,14 @@ function siteName(site: string) {
   if (!site) return ''
   return sources.value.find(s => s.ID === site)?.Name ?? site
 }
+
+// openVodSourceDead 详情请求失败时弹「无法访问点播源」弹窗。错误仍写后端日志，
+// 但不进底部红条——站点连不上是常态，不是程序故障。
+function openVodSourceDead(site: string, vodTitle: string, origin: VodDetailOrigin, e: unknown) {
+  ShellService.LogError(String(e)).catch(() => {})
+  vodSourceDead.value = { info: buildVodSourceDeadInfo(siteName(site), vodTitle, e), origin }
+}
+
 function vodItemSub(it: VodItem) {
   const parts = [it.Site ? siteName(it.Site) : '', it.Group].filter(Boolean)
   return parts.join(' · ')
@@ -573,6 +587,9 @@ async function resumeVod(h: VodHistoryInfo) {
     await playLibraryItem(h.VodID)
     return
   }
+  if (vodDetailLoading.value) return // 上一个详情请求还没回，忽略连点
+  vodSourceDead.value = null
+  vodDetailLoading.value = h.VodTitle
   try {
     await stopPlayback('live')
     mode.value = 'vod'
@@ -582,9 +599,17 @@ async function resumeVod(h: VodHistoryInfo) {
     vodDetailOrigin.value = 'home'
     vodView.value = 'detail'
     vodResume.value = null
-    vodDetail.value = await ShellService.VodDetail(h.Site, h.VodID)
+    // 先清空上一条记录留下的详情，加载期间与失败后都不残留旧内容。
+    vodDetail.value = null
+    const d = await ShellService.VodDetail(h.Site, h.VodID)
+    d.Description = DOMPurify.sanitize(d.Description)
+    vodDetail.value = d
     await applyVodResume(h)
-  } catch (e) { handleError(e) }
+  } catch (e) {
+    openVodSourceDead(h.Site, h.VodTitle, 'home', e)
+  } finally {
+    vodDetailLoading.value = ''
+  }
 }
 
 async function playLibraryItem(path: string) {
@@ -941,12 +966,19 @@ async function invalidateSearch() {
 async function openVodDetail(item: VodItem) {
   errMsg.value = ''
   vodResume.value = null
+  if (vodDetailLoading.value) return // 上一个详情请求还没回，忽略连点
+  // 站点与来源在 try 外先定好：失败分支要靠它弹失效弹窗。
+  const site = item.Site || activeSite.value
+  const origin: VodDetailOrigin = mode.value === 'favorites'
+    ? 'favorites'
+    : mode.value === 'search' || vodView.value === 'search' ? 'search' : 'list'
+  vodDetailOrigin.value = origin
+  vodSourceDead.value = null
+  vodDetailLoading.value = item.Title
+  // 清掉上一条留下的详情，失败后 openVodFavorite 的 `!vodDetail.value` 守卫才靠得住。
+  vodDetail.value = null
   try {
     if (searching.value) await cancelSearch()
-    const site = item.Site || activeSite.value
-    vodDetailOrigin.value = mode.value === 'favorites'
-      ? 'favorites'
-      : mode.value === 'search' || vodView.value === 'search' ? 'search' : 'list'
     detailSite.value = site
     const d = await ShellService.VodDetail(site, item.ID)
     d.Description = DOMPurify.sanitize(d.Description)
@@ -956,7 +988,11 @@ async function openVodDetail(item: VodItem) {
     activeSource.value = d.Sources?.[0] ?? ''
     resetEpisodePage()
     vodFavorited.value = await ShellService.IsVodFavorite(site, d.ID)
-  } catch (e) { handleError(e) }
+  } catch (e) {
+    openVodSourceDead(site, item.Title, origin, e)
+  } finally {
+    vodDetailLoading.value = ''
+  }
 }
 
 async function openVodFavorite(favorite: VodFavoriteInfo) {
@@ -969,6 +1005,24 @@ async function openVodFavorite(favorite: VodFavoriteInfo) {
   })
   if (!vodDetail.value) return // openVodDetail 内部已 handleError 且不重抛，守卫失败加载
   await prepareVodResume(favorite.Site, favorite.VodID)
+}
+
+// vodSourceDeadSearch 关掉失效弹窗，把剧名填进搜索框并发起全站搜索，
+// 让用户换一个能播的站点（搜索页本身就在所有站点里查）。
+function vodSourceDeadSearch() {
+  vodQuery.value = vodSourceDead.value?.info.vodTitle ?? ''
+  vodSourceDead.value = null
+  void vodSearch()
+}
+
+// vodSourceDeadBack 关掉失效弹窗：从首页记录进来的，详情加载前已经切到详情页，
+// 需要回首页；收藏/搜索/列表路径在详情落地前没离开原页面，关掉弹窗即可。
+async function vodSourceDeadBack() {
+  const origin = vodSourceDead.value?.origin ?? 'list'
+  vodSourceDead.value = null
+  if (vodSourceDeadBackTarget(origin) !== 'home') return
+  vodDetailOrigin.value = 'home'
+  await backFromVodDetail()
 }
 
 async function backFromVodDetail() {
@@ -2028,6 +2082,24 @@ onBeforeUnmount(() => {
         </div>
         <div class="theme-grid">
           <button v-for="t in themeOptions" :key="t.id" type="button" :class="{ active: currentTheme === t.id }" :data-theme="t.id" @click="applyTheme(t.id)">{{ t.label }}</button>
+        </div>
+      </div>
+    </div>
+
+    <p v-if="vodDetailLoading" class="detail-loading" role="status" aria-live="polite">正在加载《{{ vodDetailLoading }}》…</p>
+
+    <div v-if="vodSourceDead" class="settings-overlay" @click.self="vodSourceDeadBack">
+      <div class="settings-panel vod-source-dead" role="dialog" aria-modal="true" aria-labelledby="vod-source-dead-title">
+        <div class="settings-head">
+          <h2 id="vod-source-dead-title">无法访问点播源</h2>
+          <button type="button" aria-label="关闭" @click="vodSourceDeadBack">✕</button>
+        </div>
+        <p>站点「{{ vodSourceDead.info.siteName }}」暂时无法连接，无法打开《{{ vodSourceDead.info.vodTitle }}》。</p>
+        <p class="vod-source-dead-cause">原因：{{ vodSourceDead.info.message }}</p>
+        <p class="vod-source-dead-hint">可以从其他站点找这部剧继续看，或者换个站点重新收藏。</p>
+        <div class="vod-source-dead-actions">
+          <button type="button" @click="vodSourceDeadBack">{{ vodSourceDeadBackLabel(vodSourceDead.origin) }}</button>
+          <button type="button" class="primary" @click="vodSourceDeadSearch">全站搜索该剧</button>
         </div>
       </div>
     </div>
