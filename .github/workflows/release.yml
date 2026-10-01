@@ -119,7 +119,9 @@ jobs:
           wails3 task linux:create:appimage
           V="${GITHUB_REF_NAME#v}"
           mv bin/*.deb       "UnBox-${V}-linux-amd64.deb"
-          mv bin/*.AppImage  "UnBox-${V}-linux-amd64.AppImage"
+          # AppImage 目录规范：文件名不带 linux（AppImage 天然是 Linux 的），
+          # 用 App-1.0-x86_64.AppImage 形式。deb 保留 linux-amd64（无此惯例）。
+          mv bin/*.AppImage  "UnBox-${V}-x86_64.AppImage"
           ls -la
 
       - name: Package Windows (NSIS installer)
