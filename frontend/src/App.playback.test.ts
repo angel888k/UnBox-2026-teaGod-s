@@ -254,4 +254,14 @@ describe('App 播放事件接线', () => {
     expect(aboutSection).toContain('@click="openDonations"')
     expect(aboutSection).not.toContain('@click="openURL(DONATE_URL)"')
   })
+
+  // 弹窗一打开 Donors 还是空数组，直接按长度判断会把「加载中」显示成「还没人捐助」。
+  it('捐助弹窗按拉取状态区分加载中、失败与空态', () => {
+    expect(app).toContain("donationViewState === 'loading'")
+    expect(app).toContain("donationViewState === 'error'")
+    expect(app).toContain('正在加载捐助榜单…')
+    expect(app).toContain('加载失败，请稍后重试')
+    // 空态文案不能再由 Donors.length 直接决定，否则拉取期间会误报「没人捐助」。
+    expect(app).not.toContain('v-if="donationLeaderboard.Donors.length"')
+  })
 })

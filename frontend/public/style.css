@@ -2521,6 +2521,8 @@ body[data-theme="8bit"],
 }
 
 .donation-action {
+  /* 更新时间缺失时页脚只剩这一个按钮，space-between 会把它推到左边，用 auto 撑住右对齐。 */
+  margin-left: auto;
   padding: 0.4rem 0.9rem;
   color: var(--accent);
   background: var(--btn-bg);

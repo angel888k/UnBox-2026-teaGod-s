@@ -16,7 +16,7 @@ import { playbackPlanForMode, resolvePlaybackFallback, shouldPauseStalePlayback,
 import { createVodSearchCache, isCurrentVodCategoryRequest, isVodSearchCacheValid, nextVodCategoryRequest, nextVodSearchRequest, pickResumeSeek, removeVodFavorite, removeVodHistory, removeVodSearchHistory, resolveVodSelection, shouldShowVodNoResults, upsertVodSearchHistory, vodBackTarget, vodResumeView, vodSearchQueryForReturn, type VodDetailOrigin, type VodSearchCache, type VodView } from './vodNavigation'
 import { buildVodSourceDeadInfo, vodSourceDeadBackLabel, vodSourceDeadBackTarget, type VodSourceDeadInfo } from './vodSourceDead'
 import { appendVodItems, hasNextVodPage, nextVodPage } from './vodPagination'
-import { formatUpdatedAt, normalizeLeaderboard } from './donation'
+import { donationView, formatUpdatedAt, normalizeLeaderboard, type DonationStatus } from './donation'
 import DOMPurify from 'dompurify'
 
 // 爱发电赞助主页
@@ -168,6 +168,9 @@ const showDisclaimer = ref(false)
 const showOpenSource = ref(false)
 const showDonations = ref(false)
 const donationLeaderboard = ref(normalizeLeaderboard(null))
+const donationStatus = ref<DonationStatus>('idle')
+const donationViewState = computed(() => donationView(donationStatus.value, donationLeaderboard.value.Donors))
+const donationUpdatedText = computed(() => formatUpdatedAt(donationLeaderboard.value.UpdatedAt))
 const catsCollapsed = ref(false)
 const infoCollapsed = ref(false)
 
@@ -317,13 +320,16 @@ async function openAbout() {
   showAbout.value = true
 }
 
-// openDonations 只在用户打开榜单时拉取；请求失败保持静默，不弹错误提示。
+// openDonations 只在用户打开榜单时拉取；失败不弹全局错误，由弹窗正文提示重试，
+// 且保留上一次成功的数据，避免回退成空态或丢掉已经看到的榜单。
 async function openDonations() {
   showDonations.value = true
+  donationStatus.value = 'loading'
   try {
     donationLeaderboard.value = normalizeLeaderboard(await ShellService.GetDonationLeaderboard())
+    donationStatus.value = 'ready'
   } catch {
-    donationLeaderboard.value = normalizeLeaderboard(null)
+    donationStatus.value = 'failed'
   }
 }
 
@@ -2026,7 +2032,7 @@ onBeforeUnmount(() => {
           <h2 id="donation-leaderboard-title">捐助榜单</h2>
           <button type="button" aria-label="关闭" @click="showDonations = false">✕</button>
         </div>
-        <ul v-if="donationLeaderboard.Donors.length" class="donation-list">
+        <ul v-if="donationViewState === 'list'" class="donation-list">
           <li v-for="(donor, index) in donationLeaderboard.Donors" :key="donor.ID || 'anonymous-' + index">
             <img
               class="donation-avatar"
@@ -2039,9 +2045,11 @@ onBeforeUnmount(() => {
             <span class="donation-name">{{ donor.Name }}</span>
           </li>
         </ul>
+        <p v-else-if="donationViewState === 'loading'" class="donation-empty">正在加载捐助榜单…</p>
+        <p v-else-if="donationViewState === 'error'" class="donation-empty">加载失败，请稍后重试</p>
         <p v-else class="donation-empty">还没有捐助记录，感谢每一份支持</p>
         <div class="donation-footer">
-          <span class="donation-updated">数据更新于 {{ formatUpdatedAt(donationLeaderboard.UpdatedAt) }}</span>
+          <span v-if="donationUpdatedText !== '未知'" class="donation-updated">数据更新于 {{ donationUpdatedText }}</span>
           <button type="button" class="donation-action" @click="openURL(DONATE_URL)">捐助</button>
         </div>
       </div>

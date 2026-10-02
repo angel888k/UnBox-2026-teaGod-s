@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { formatUpdatedAt, normalizeLeaderboard } from './donation'
+import { donationView, formatUpdatedAt, normalizeLeaderboard, type DonationDonor } from './donation'
+
+const 热心网友: DonationDonor = { ID: '', Name: '热心网友', Avatar: '', Anonymous: true }
 
 describe('normalizeLeaderboard', () => {
   it('空值或缺少字段时返回空榜', () => {
@@ -89,5 +91,33 @@ describe('formatUpdatedAt', () => {
     const formatted = formatUpdatedAt('2026-09-20T12:34:56+08:00')
 
     expect(formatted).toMatch(/^2026-09-20 \d{2}:\d{2}$/)
+  })
+})
+
+describe('donationView', () => {
+  // 拉取期间 Donors 还是空数组，若直接按长度判断会把「加载中」显示成「还没人捐助」。
+  it('加载中且尚无数据时显示加载中', () => {
+    expect(donationView('loading', [])).toBe('loading')
+  })
+
+  it('加载中但已有上次成功的数据时继续展示列表', () => {
+    expect(donationView('loading', [热心网友])).toBe('list')
+  })
+
+  // 失败保留旧数据：宁可展示略旧的榜单，也不回退成空态或错误文案。
+  it('加载失败但已有旧数据时继续展示列表', () => {
+    expect(donationView('failed', [热心网友])).toBe('list')
+  })
+
+  it('加载失败且无数据时显示错误', () => {
+    expect(donationView('failed', [])).toBe('error')
+  })
+
+  it('成功但榜单为空时显示空态', () => {
+    expect(donationView('ready', [])).toBe('empty')
+  })
+
+  it('尚未拉取过时不显示错误', () => {
+    expect(donationView('idle', [])).toBe('empty')
   })
 })
