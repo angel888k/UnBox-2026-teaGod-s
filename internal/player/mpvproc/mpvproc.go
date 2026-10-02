@@ -43,6 +43,7 @@ type mpvProc struct {
 	lifecycleMu sync.Mutex
 	session     int64 // 会话代际：Load 每次自增，用于丢弃跨会话串味的迟到应答
 	cmd         *exec.Cmd
+	wait        *waiter // 当前会话的收尸器，Close/超时/失败清理共用，避免 Wait 被调用两次
 	conn        io.ReadWriteCloser
 	wid         uintptr // 历史嵌入句柄，M4 默认不设置
 
@@ -85,27 +86,34 @@ func (p *mpvProc) Load(ctx context.Context, s player.Stream) error {
 	p.lifecycleMu.Unlock()
 	args := buildArgs(s, ipcPath, wid)
 
+	// mpv 起不来时（缺 DLL、被杀软拦截、参数过旧）唯一的原因只出现在它的
+	// stderr 上，丢弃它会让这类故障只剩一句「连接 IPC 失败」，无从定位。
+	stderr := &stderrTail{max: mpvStderrLimit}
+
 	cmd := exec.CommandContext(ctx, p.exePath, args...)
 	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	cmd.Stderr = stderr
 	setupProcAttr(cmd) // Windows：隐藏 mpv 子进程的控制台窗口
 	if err := cmd.Start(); err != nil {
 		cleanupIPC(ipcPath)
-		return fmt.Errorf("启动 mpv 失败: %w", err)
+		return mpvLoadError(fmt.Errorf("启动 mpv 失败: %w", err), stderr.String())
 	}
 
-	conn, err := dialIPC(ipcPath)
+	w := startWaiter(cmd)
+
+	conn, err := waitForIPC(dialIPC, ipcPath, ipcConnectTimeout, w)
 	if err != nil {
 		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+		_ = w.wait() // 等收尸完成，此后 stderr 不再有写入
 		cleanupIPC(ipcPath)
-		return fmt.Errorf("连接 mpv IPC 失败: %w", err)
+		return mpvLoadError(err, stderr.String())
 	}
 
 	p.lifecycleMu.Lock()
 	p.session++
 	sess := p.session
 	p.cmd = cmd
+	p.wait = w
 	p.conn = conn
 	p.ipcPath = ipcPath
 	p.lifecycleMu.Unlock()
@@ -182,9 +190,11 @@ func (p *mpvProc) Close() error {
 	p.lifecycleMu.Lock()
 	conn := p.conn
 	cmd := p.cmd
+	w := p.wait
 	ipcPath := p.ipcPath
 	p.conn = nil
 	p.cmd = nil
+	p.wait = nil
 	p.ipcPath = ""
 	p.lifecycleMu.Unlock()
 
@@ -193,8 +203,9 @@ func (p *mpvProc) Close() error {
 	}
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
 	}
+	// Kill 之后 Wait 立即返回；w 为 nil（本就无会话）时是空操作。
+	_ = w.wait()
 	if ipcPath != "" {
 		cleanupIPC(ipcPath)
 	}
@@ -245,13 +256,16 @@ func (p *mpvProc) send(args ...any) error {
 			same := p.conn == c
 			var conn io.ReadWriteCloser
 			var cmd *exec.Cmd
+			var w *waiter
 			var ipcPath string
 			if same {
 				conn = p.conn
 				cmd = p.cmd
+				w = p.wait
 				ipcPath = p.ipcPath
 				p.conn = nil
 				p.cmd = nil
+				p.wait = nil
 				p.ipcPath = ""
 			}
 			p.lifecycleMu.Unlock()
@@ -262,8 +276,8 @@ func (p *mpvProc) send(args ...any) error {
 				}
 				if cmd != nil && cmd.Process != nil {
 					_ = cmd.Process.Kill()
-					_ = cmd.Wait()
 				}
+				_ = w.wait()
 				if ipcPath != "" {
 					cleanupIPC(ipcPath)
 				}

@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"sync/atomic"
 	"syscall"
-	"time"
 )
 
 // pipeSeq 保证同进程内命名管道名唯一。
@@ -21,21 +20,11 @@ func newIPCPath() (string, error) {
 	return fmt.Sprintf("unbox-mpv-%d", pipeSeq.Add(1)), nil
 }
 
-// dialIPC 以重试方式连接 mpv 的命名管道：mpv 启动后创建管道有微小延迟。
-// 客户端端用 os.OpenFile 打开 \\.\pipe\<name>（等价 CreateFile 的 client 端）。
+// dialIPC 单次尝试连接 mpv 的命名管道，客户端用 os.OpenFile 打开
+// \\.\pipe\<name>（等价 CreateFile 的 client 端）。重试与超时由 waitForIPC
+// 统一处理——它还要在重试期间监视 mpv 是否已经退出。
 func dialIPC(path string) (io.ReadWriteCloser, error) {
-	pipe := `\\.\pipe\` + path
-	deadline := time.Now().Add(ipcConnectTimeout)
-	for {
-		f, err := os.OpenFile(pipe, os.O_RDWR, 0)
-		if err == nil {
-			return f, nil
-		}
-		if time.Now().After(deadline) {
-			return nil, err
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	return os.OpenFile(`\\.\pipe\`+path, os.O_RDWR, 0)
 }
 
 // cleanupIPC 命名管道随 mpv 退出自动销毁，无需显式删除。

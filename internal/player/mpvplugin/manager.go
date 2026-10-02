@@ -45,6 +45,8 @@ type Manager struct {
 	lookPath func(string) (string, error)
 	client   *http.Client
 	run      func(context.Context, string, ...string) error
+	// output 取子进程的标准输出，供 mpv --version 预检使用（run 只回传错误）。
+	output func(context.Context, string, ...string) ([]byte, error)
 }
 
 func New(goos, root string) *Manager {
@@ -60,6 +62,8 @@ func New(goos, root string) *Manager {
 func newManager(goos, root string, lookPath func(string) (string, error)) *Manager {
 	return &Manager{goos: goos, root: root, lookPath: lookPath, client: http.DefaultClient, run: func(ctx context.Context, name string, args ...string) error {
 		return exec.CommandContext(ctx, name, args...).Run()
+	}, output: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		return exec.CommandContext(ctx, name, args...).Output()
 	}}
 }
 
@@ -99,10 +103,16 @@ func (m *Manager) Install(ctx context.Context) (InstallResult, error) {
 	}
 }
 
+// NewPlayer 在创建播放器前先做一次 mpv 预检：确认可执行文件真的能跑起来，
+// 且版本不低于下限。坏掉的 mpv 走到 IPC 才失败，只会留下一句无从下手的
+// 「找不到管道」，预检能在这里就给出可操作的原因。
 func (m *Manager) NewPlayer() (player.Player, error) {
 	s := m.Status()
 	if !s.Available {
 		return nil, ErrUnavailable()
+	}
+	if err := m.checkVersion(context.Background(), s.Path); err != nil {
+		return nil, err
 	}
 	return mpvproc.New(s.Path)
 }

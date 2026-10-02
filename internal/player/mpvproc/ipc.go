@@ -2,11 +2,54 @@ package mpvproc
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strconv"
+	"time"
 
 	"github.com/unbox/unbox/internal/player"
 )
+
+// ipcRetryInterval 是两次 IPC 连接尝试之间的间隔。mpv 启动到创建 IPC 端点
+// 有微小延迟，必须重试而不是一次定生死。
+const ipcRetryInterval = 50 * time.Millisecond
+
+// errMPVExitedEarly 表示 mpv 进程在建立 IPC 之前就退出了。
+var errMPVExitedEarly = errors.New("mpv 启动后立即退出")
+
+// dialFunc 连接 mpv 的 IPC 端点，由各平台实现（Unix socket / Windows 命名管道）。
+type dialFunc func(string) (io.ReadWriteCloser, error)
+
+// waitForIPC 在超时前反复尝试连接 mpv 的 IPC 端点，同时监视子进程是否已退出。
+//
+// mpv 起不来时（缺 DLL、被杀软拦截、参数过旧）端点永远不会出现；空等到超时
+// 只会把真正的原因掩盖成一句「找不到管道」，还白白拖慢报错。发现进程已退出
+// 就立刻返回 errMPVExitedEarly，由调用方结合 stderr 给出可操作的提示。
+func waitForIPC(dial dialFunc, path string, timeout time.Duration, w *waiter) (io.ReadWriteCloser, error) {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		conn, err := dial(path)
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+
+		select {
+		case <-w.exited():
+			// 进程已退出，此时那条「找不到端点」的连接错误是必然结果、没有信息量，
+			// 真正的失败原因是 mpv 没起来，由调用方结合 stderr 说明。
+			return nil, errMPVExitedEarly
+		default:
+		}
+
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("连接 mpv IPC 失败: %w", lastErr)
+		}
+		time.Sleep(ipcRetryInterval)
+	}
+}
 
 // encodeCommand 把一条 mpv JSON IPC 命令编码为以换行结尾的请求行。
 func encodeCommand(args []any) string {

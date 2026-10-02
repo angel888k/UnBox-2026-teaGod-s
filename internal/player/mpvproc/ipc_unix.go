@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"time"
 )
 
 // newIPCPath 生成一个唯一的 Unix socket 路径（供 --input-ipc-server 使用）。
@@ -22,19 +21,10 @@ func newIPCPath() (string, error) {
 	return path, nil
 }
 
-// dialIPC 以重试方式连接 mpv IPC socket：mpv 启动后创建 socket 有微小延迟。
+// dialIPC 单次尝试连接 mpv IPC socket。重试与超时由 waitForIPC 统一处理——
+// 它还要在重试期间监视 mpv 是否已经退出，逻辑不宜留在平台文件里。
 func dialIPC(path string) (io.ReadWriteCloser, error) {
-	deadline := time.Now().Add(ipcConnectTimeout)
-	for {
-		conn, err := net.Dial("unix", path)
-		if err == nil {
-			return conn, nil
-		}
-		if time.Now().After(deadline) {
-			return nil, err
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	return net.Dial("unix", path)
 }
 
 // cleanupIPC 删除 Unix socket 文件。

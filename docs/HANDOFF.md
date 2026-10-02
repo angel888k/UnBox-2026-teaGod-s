@@ -55,6 +55,47 @@
 > 09-01 快照之后合入 master 的更新。下方「M4 之后新增的功能（本次会话）」为当时的
 > 冻结快照，保留作历史记录，不再更新。
 
+- **Wails beta.9 → beta.26 升级**（`6d083c15`，2026-10-01）：Wails v3 落后 17 个 beta
+  后跟上。版本是**四处锁**，必须同步：`go.mod`、`mise.toml`、`.github/workflows/release.yml`
+  的 `wails3@`、`frontend/package.json` 的 `@wailsio/runtime`（npm 与 Go 版本严格一一对应），
+  另加 `App.vue` 应用内「开源库」回显与三处文档。顺带跟上 `x/sync` v0.23.0、
+  `x/text` v0.42.0、`modernc.org/sqlite` v1.60.1。
+  - **beta.26 移除了 `jchv/go-winloader`**（原来在 `internal/webview2/webviewloader`
+    里真实 import），`go mod tidy` 会把它从 `go.mod` 清掉，属预期；CI 独立
+    `go install wails3@beta.26` 自带依赖，`go list -deps` 验过 windows amd64/arm64 与
+    darwin arm64 均可解析。
+  - **`generate bindings` 默认输出变了**：beta.26 起默认 `.js` + JSDoc，`-ts` 成为必需参数。
+    仓库 `build/Taskfile.yml` 的 `generate:bindings` 已带 `-ts`，CI 与 `mise run build:*`
+    不受影响；**手动执行该命令须自己加 `-ts`**，否则前端静默丢类型、`vue-tsc` 报
+    `TS18047`/`TS18046`，看着像代码回归。详见 `AGENTS.md`「关键坑」。
+  - 验证：全量 `go test`/`go vet`/`gofmt`/`CGO_ENABLED=1 go build`、前端 169 用例与
+    生产构建、`wails3 task linux:build` 全链路（重生成 bindings → vue-tsc → vite →
+    `go build -tags production`）；前端产物 1,046 kB / gzip 310 kB，与 beta.9 一致无回退。
+- **mpv 故障诊断三层加固**（2026-10-02）：用户反馈 Windows 上反复出现
+  `连接 mpv IPC 失败: open \.\pipe\unbox-mpv-N: The system cannot find the file specified`。
+  排查结论：**与「没装 mpv」无关**——没装会走 `未找到 mpv 可执行文件`；该报错发生在
+  `cmd.Start()` 成功**之后**，即 mpv 被找到并拉起了，但进程立刻退出、IPC 管道始终没出现
+  （`ERROR_FILE_NOT_FOUND` 而非 `ERROR_PIPE_BUSY`）。真正的盲点是 mpv 的 stderr 被
+  `io.Discard` 丢掉了，故障只能靠猜。三层修复：
+  - **预检**（`mpvplugin/version.go`）：`NewPlayer()` 先跑 `mpv --version`，跑不起来
+    （缺 DLL / 被杀软拦截）或低于 `minMPVVersion`（当前 0.28.0，一行可调）当场报错；
+    版本号认不出来时不拦截（fail-open，避免误伤分支版本）。
+  - **保留 stderr**（`mpvproc/stderr.go`）：环形保留子进程 stderr 末尾 4KB。
+  - **识别提前退出**（`mpvproc/waiter.go` + `ipc.go` 的 `waitForIPC`）：重试循环从两个
+    平台文件提到 `ipc.go`，并新增只调用一次 `exec.Cmd.Wait` 的 `waiter`——`exec.Cmd`
+    不允许 Wait 两次，而 Close / 命令超时 / 失败清理三处都要收尸。等管道期间发现进程
+    已退出就立即返回，不再空等满 5 秒。
+  - 效果：报错由 `连接 mpv IPC 失败: … 找不到文件` 变为
+    `mpv 启动后立即退出（mpv 输出: Failed to load libmpv-2.dll）`。
+  - 顺带明确路由：Windows/macOS 只有**本地媒体库文件、RTMP、HEVC 的 HLS、Web 失败后的
+    Fallback** 四类走 mpv，所以该报错反复出现通常意味着用户在媒体库看片 / 看 H.265 源，
+    且开着自动换源时每次失败都会再触发一轮，表现为连环报错。
+- **捐助榜单加载态**（2026-10-02）：弹窗一打开就渲染，而榜单初值是空榜，模板按
+  `Donors.length` 二选一，于是整个拉取窗口都误显示「还没有捐助记录，感谢每一份支持」，
+  页脚还跟着显示「数据更新于 未知」。新增 `donation.ts` 的 `donationView(status, donors)`
+  纯函数收敛分支：有数据优先展示列表（重开弹窗继续显示旧榜单、后台静默刷新），无数据时
+  才看状态（加载中 / 加载失败 / 空态）。同时去掉 `catch` 里的清空——它会在任何一次拉取
+  失败时抹掉已经看到的榜单。
 - **Web 播放器轨道控制**（`6c8c8d9b`，2026-09-10/11）：HLS Web 播放路径新增轨道设置菜单，
   可选择清晰度、音轨和 HLS 内置字幕轨；菜单仅在 hls.js 可用时显示，mpv/FLV/原生 MP4
   路径不显示。外挂 SRT/VTT 加载入口当前隐藏，字幕转换工具保留在前端供后续复用。
@@ -236,14 +277,18 @@
 - **M3 本地媒体库**：✅ 已完成（基础 merge `adcc8f3e`，首帧海报与布局修复已合入 master，
   2026-09-07），详见上方「近期更新」。
 - **Windows/macOS 实测**：打包已由 GH Actions 自动化；Windows NSIS 内嵌 mpv 的下载、解压、安装包执行和无系统 mpv 播放仍需 Windows 宿主机实测，macOS 仍需验证外部 mpv 安装与播放。
+- **回访报 mpv 报错的用户**：mpv 诊断三层已就位，但**尚未收到真实环境反馈**。下次出包后
+  让该用户复现，确认新报错是否指出了具体原因（缺 DLL / 杀软拦截 / 版本过低）；若仍是
+  「启动后立即退出」而无 stderr 输出，说明是我们的参数或环境问题，需另查。
 - 停车项：failover `Events()` fan-out、probe 同步阻塞 `Load`、tvbox 剧集缓存上限、
   点播收藏等。
 
 ## 已排出的方向（设计决策，勿重开）
 
 - 丢弃 mpvlib；三平台统一「Web + 外部 mpv」。
-- Wails v3 钉死 3.0.0-beta.26（Linux 后端为 GTK4）；升版必须同步四处：go.mod、mise.toml、.github/workflows/release.yml 的 `wails3@`、frontend 的 `@wailsio/runtime`（三者版本必须一致，否则桥接不匹配）。
+- Wails v3 钉死 3.0.0-beta.26（Linux 后端为 GTK4）；升版必须同步四处：go.mod、mise.toml、.github/workflows/release.yml 的 `wails3@`、frontend 的 `@wailsio/runtime`（四者版本必须一致，否则桥接不匹配）。另注意 `generate bindings` 自 beta.26 起默认输出 `.js`，须带 `-ts`。
 - 播放路由：Web 优先（H.264 HTTP），mpv 兜底（HEVC/RTMP/本地/无 MSE）。
+- **mpv 预检放在 `NewPlayer()`，不要挪进 `Status()`**：`Status()` 被前端高频轮询（`MPVStatus`）且被首帧抓取调用，里面起子进程会拖慢这些路径；预检只在真正要创建播放器时做一次。
 - CMS JSON 协议实测要点（详见 M2 spec §2.1）：分类从 `type_id`/`type_name` 派生；
   `vod_play_from` 列表用 `,`、详情用 `$$$`；剧集 `$$$`/`#`/`$`。
 - `csp_` JAR 已实测为编译 dex（非 JS），本地不可行；「解包取 JS」的方案前提不成立（见 M5 spec §3/§11）。
